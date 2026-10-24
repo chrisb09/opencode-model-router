@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "aliases": {
+    "gemini-medium": "antigravity/antigravity-gemini-3.8-flash#medium",
+    "gemini-high": "antigravity/antigravity-gemini-3.8-flash#high",
+    "deepseek": "opencode-go/deepseek-v4.1-flash#max",
+    "sol-medium": "openai/gpt-6.1-sol#medium",
+    "sol-high": "openai/gpt-6.1-sol#high",
+    "opus": "oneprovider/claude-opus-5-5",
+    "kimi": "opencode-go/kimi-k3.1-pro#high"
+  },
+  "roles": {
+    "explore": { "LOW": ["gemini-medium"], "DEFAULT": ["gemini-high"], "HARD": ["deepseek"], "EXCEPTIONAL": ["sol-medium"] },
+    "research": { "LOW": ["gemini-medium"], "DEFAULT": ["gemini-high"], "HARD": ["deepseek"], "EXCEPTIONAL": ["sol-high"] },
+    "general": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
+    "debugger": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
+    "reviewer": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
+    "architect": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
+    "critic": { "LOW": ["gemini-high", "deepseek"], "DEFAULT": ["deepseek", "sol-medium", "gemini-high"], "HARD": ["sol-high", "deepseek"], "EXCEPTIONAL": ["opus", "sol-high", "deepseek"] }
+  },
+  "fallbacks": {
+    "LOW": ["gemini-high", "deepseek"],
+    "DEFAULT": ["deepseek", "gemini-high"],
+    "HARD": ["sol-high", "deepseek"],
+    "EXCEPTIONAL": ["sol-high"]
+  },
+  "criticPreferences": { "gemini": "deepseek", "deepseek": "sol", "sol": "deepseek", "kimi": "sol", "opus": "sol" },
+  "outputTokens": { "LOW": 4096, "DEFAULT": 8192, "HARD": 16384, "EXCEPTIONAL": 16384 },
+  "maxSteps": { "LOW": 10, "DEFAULT": 20, "HARD": 30, "EXCEPTIONAL": 30 },
+  "quota": {
+    "maxAgeMs": 900000,
+    "hardReservePp": 2,
+    "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25 },
+    "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2 },
+    "maxConcurrentPerAccount": { "antigravity": 2, "opencode-go": 2, "openai": 1 }
+  },
+  "allowPaid": false,
+  "allowKimi": false,
+  "maxTaskUsd": 0,
+  "totalBudgetUsd": 0
+}
