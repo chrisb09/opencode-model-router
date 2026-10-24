@@ -158,27 +158,33 @@ subsequently edited agent/MCP definitions. See the README for the command.
 
 ## Source and version-control handoff
 
-The new project is `/home/christian/git/opencode-model-router`; it has **not been
-initialized as a Git repository**. Its policy, implementation, tests and docs
-are local files, not a published package or upstream contribution.
+The new project is `/home/christian/git/opencode-model-router`, initialized on
+`main` and pushed to the **private** repository
+<https://github.com/chrisb09/opencode-model-router>. Its policy, implementation,
+tests and docs are versioned; the local runtime database, credentials, backups
+and timestamped HTML/PNG exports are not.
 
-Related uncommitted changes live in:
+Related repository state at handoff:
 
-- `/home/christian/git/opencode-antigravity-auth`: request-local pins, cursor
-  preservation, tests, V2 comments and rebuilt output where tracked.
-- `/home/christian/git/ai_usage`: `src/collectors/codex.ts`,
-  `src/collectors/opencode-go.ts`, `test/unknown-quota.test.ts`; unrelated user
-  widget edits remain untouched.
-- `/home/christian/git/opencode-observatory`: V2 transport/wrapper attribution,
-  `tests/router-attribution.test.ts`, and rebuilt tracked plugin distribution.
-- `~/.config/opencode/opencode.jsonc`: additive agents/plugin/MCP/todo settings.
-- `~/.config/opencode/AGENTS.md`: the user's global delegation preference;
-  retained independently of router disabling.
+- `/home/christian/git/opencode-observatory`: committed/pushed on `main` as
+  `3a67905` (V2 transport/wrapper attribution, regression test and rebuilt
+  tracked plugin distribution).
+- `/home/christian/git/opencode-antigravity-auth`: committed/pushed on `main` as
+  `320ddae` (request-local pins, cursor preservation, tests, V2 comments and
+  rebuilt tracked output).
+- `/home/christian/git/ai_usage`: clean and up to date on `main` at `8b4c573`;
+  the unknown-usage parser work is already part of that state.
+- `~/.config/opencode/opencode.jsonc`: local additive agents/plugin/MCP/todo
+  settings; not a repository and not pushed.
+- `~/.config/opencode/AGENTS.md`: the user's local global delegation preference;
+  not a repository and retained independently of router disabling.
 
-**No current router/adapter/parser/attribution changes were committed or pushed.**
-Do not stage every modified file in the sibling repositories: inspect diffs and
-keep the user's concurrent widget work separate. Private configuration, tokens,
-workspace bindings and SQLite state must not be committed.
+The router repository contains the **viewer generator**, not the recorded
+workflow data. Pulling it on another machine neither transfers the local SQLite
+ledger nor adds workflow storage/visualization to the Observatory. The local HTML
+timeline remains the current visualization; Observatory export/dashboard work is
+still stage 2/3 in the proposal. Private configuration, tokens, workspace
+bindings and SQLite state must not be committed.
 
 The original private installation backup is referenced by
 `~/.local/share/opencode-model-router/installation-backup`. Prefer the targeted
