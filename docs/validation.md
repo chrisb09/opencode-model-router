@@ -220,10 +220,10 @@ and timestamped HTML/PNG exports are not.
 
 Related repository state at handoff:
 
-- `/home/christian/git/opencode-model-router`: current `main` is `47d3571`
-  (native step budgets, measured concurrency caps, recovery command and probe).
-  The repository is private; the local SQLite ledger and credentials are not
-  versioned.
+- `/home/christian/git/opencode-model-router`: current `main` is `6125e4b`
+  (feature `47d3571`: native step budgets, measured concurrency caps, recovery
+  command and probe). The repository is private; the local SQLite ledger and
+  credentials are not versioned.
 - `/home/christian/git/opencode-observatory`: committed/pushed on `main` as
   `3a67905` (V2 transport/wrapper attribution, regression test and rebuilt
   tracked plugin distribution).
