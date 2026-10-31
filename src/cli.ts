@@ -43,7 +43,11 @@ try {
       } else console.log(format === "mermaid" ? result.mermaid : JSON.stringify(result, null, 2))
     }
   }
-  else if (command === "reconcile") {
+  else if (command === "recover") {
+    const id = process.argv[3]
+    if (!id || !process.argv.includes("--confirm-provider-idle")) throw new Error("Usage: recover <executionID> --confirm-provider-idle. The service verifies the native child is idle before finishing and reconciling; this is not spending authorization.")
+    console.log(JSON.stringify(await client.call("/recover", { id, confirmation: "provider-idle-confirmed" }), null, 2))
+  } else if (command === "reconcile") {
     const id = process.argv[3]
     if (!id || !process.argv.includes("--confirm-provider-idle")) throw new Error("Usage: reconcile <executionID> --confirm-provider-idle. Only confirm after verifying no provider request remains active; this is not spending authorization.")
     console.log(JSON.stringify(await client.call("/reconcile", { id, confirmation: "provider-idle-confirmed" }), null, 2))
@@ -51,5 +55,5 @@ try {
     const raw = process.argv[3]
     if (!raw) throw new Error("Usage: bun src/cli.ts recommend '<task JSON>'")
     console.log(JSON.stringify(await client.call("/recommend", { task: JSON.parse(raw) }), null, 2))
-   } else throw new Error("Commands: serve, status, recommend, reconcile, workflow")
+   } else throw new Error("Commands: serve, status, recommend, recover, reconcile, workflow")
 } catch (error) { console.error(error instanceof Error ? error.message : "Router command failed"); process.exitCode = 1 }

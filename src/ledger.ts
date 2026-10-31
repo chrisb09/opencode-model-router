@@ -69,6 +69,9 @@ export class Ledger {
   concurrency(key: string): number {
     return this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM executions e WHERE account_key=? AND (state IN ('reserved','running','uncertain') OR EXISTS(SELECT 1 FROM requests r WHERE r.execution_id=e.id AND r.state IN ('reserved','uncertain')))").get(key)!.n
   }
+  totalConcurrency(): number {
+    return this.db.query<{ n: number }, []>("SELECT count(*) AS n FROM executions e WHERE state IN ('reserved','running','uncertain') OR EXISTS(SELECT 1 FROM requests r WHERE r.execution_id=e.id AND r.state IN ('reserved','uncertain'))").get()!.n
+  }
   pressure(key: string, _window: string, checkedAt: number): number {
     const active = this.db.query<{ n: number }, [string]>("SELECT coalesce(sum(json_extract(candidate,'$.estimatedRequestPp')),0) AS n FROM executions e WHERE account_key=? AND state IN ('reserved','running','uncertain') AND NOT EXISTS(SELECT 1 FROM requests r WHERE r.execution_id=e.id)").get(key)!.n
     // Completed requests are not freed against a snapshot predating completion.
@@ -105,11 +108,18 @@ export class Ledger {
   log(id: string | null, kind: string, data: unknown, now: number) { this.db.query("INSERT INTO decisions(execution_id,at,kind,data) VALUES(?,?,?,?)").run(id, now, kind, JSON.stringify(data)) }
   recent(limit = 20) { return this.db.query("SELECT execution_id,at,kind,data FROM decisions ORDER BY id DESC LIMIT ?").all(limit).map((r: any) => ({ ...r, data: JSON.parse(r.data) })) }
   status() {
-    return { executions: this.db.query("SELECT state,count(*) AS count FROM executions GROUP BY state").all(), requests: this.db.query("SELECT state,count(*) AS count FROM requests GROUP BY state").all(),
-      performance: this.db.query(`SELECT model,count(*) AS samples,
-        sum(state='completed') AS completed,sum(state='failed') AS failed,sum(state='uncertain') AS uncertain,
-        avg(json_extract(usage,'$.durationMs')) AS averageDurationMs,
-        1000.0*sum(json_extract(usage,'$.outputTokens'))/nullif(sum(CASE WHEN json_extract(usage,'$.outputTokens') IS NOT NULL THEN json_extract(usage,'$.durationMs') END),0) AS measuredOutputTokensPerSecond
-        FROM requests WHERE state<>'reserved' GROUP BY model`).all(), recent: this.recent(10) }
+    return {
+      executions: this.db.query("SELECT state,count(*) AS count FROM executions WHERE coalesce(json_extract(task,'$.test'),0)=0 GROUP BY state").all(),
+      requests: this.db.query(`SELECT r.state,count(*) AS count FROM requests r JOIN executions e ON e.id=r.execution_id
+        WHERE coalesce(json_extract(e.task,'$.test'),0)=0 GROUP BY r.state`).all(),
+      testExecutions: this.db.query("SELECT state,count(*) AS count FROM executions WHERE coalesce(json_extract(task,'$.test'),0)=1 GROUP BY state").all(),
+      testRequests: this.db.query(`SELECT r.state,count(*) AS count FROM requests r JOIN executions e ON e.id=r.execution_id
+        WHERE coalesce(json_extract(e.task,'$.test'),0)=1 GROUP BY r.state`).all(),
+      performance: this.db.query(`SELECT r.model,count(*) AS samples,
+        sum(r.state='completed') AS completed,sum(r.state='failed') AS failed,sum(r.state='uncertain') AS uncertain,
+        avg(json_extract(r.usage,'$.durationMs')) AS averageDurationMs,
+        1000.0*sum(json_extract(r.usage,'$.outputTokens'))/nullif(sum(CASE WHEN json_extract(r.usage,'$.outputTokens') IS NOT NULL THEN json_extract(r.usage,'$.durationMs') END),0) AS measuredOutputTokensPerSecond
+        FROM requests r JOIN executions e ON e.id=r.execution_id
+        WHERE r.state<>'reserved' AND coalesce(json_extract(e.task,'$.test'),0)=0 GROUP BY r.model`).all(), recent: this.recent(10) }
   }
 }

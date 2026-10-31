@@ -15,7 +15,7 @@ await mkdir(backup, { recursive: true, mode: 0o700 })
 for (const [from, name] of [[configPath, "opencode.jsonc"], [p.config, "router-config.json"], [manifestPath, "installation.json"]]) {
   await copyFile(from, join(backup, name)); await chmod(join(backup, name), 0o600)
 }
-for (const id of ["plan", "build", "explore", "research", "general", "debugger", "reviewer", "architect", "critic"]) {
+for (const id of ["plan", "build", "explore", "research", "general", "debugger", "reviewer", "architect", "critic", "explore-extended", "research-extended", "general-extended", "debugger-extended", "reviewer-extended", "architect-extended", "critic-extended"]) {
   const agent = config.agents?.[id]
   if (!agent) continue
   const actions = ["workflow_read", "model-router_get_workflow", "model-router_list_workflows", ...(["plan", "build"].includes(id) ? ["workflow_annotate"] : [])]

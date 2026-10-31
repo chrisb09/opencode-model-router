@@ -28,7 +28,8 @@ export function taskErrors(t: Task): string[] {
 export function recommend(policy: Policy, task: Task, models: CatalogModel[], accounts: Account[], now: number,
   pressure: (key: string, window: string, checkedAt: number) => number = () => 0,
   concurrency: (key: string) => number = () => 0,
-  cooldown: (key: string, model: string) => number = () => 0): { candidates: Candidate[]; errors: string[] } {
+  cooldown: (key: string, model: string) => number = () => 0,
+  totalConcurrency: () => number = () => 0): { candidates: Candidate[]; errors: string[] } {
   const errors = taskErrors(task)
   if (errors.length) return { candidates: [], errors }
   const configured = task.requestedModel ? [task.requestedModel] : [
@@ -40,10 +41,12 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
     const ref = parseModel(name)
     const family = familyOf(name)
     const model = models.find(m => m.providerID === ref.providerID && m.id === ref.id)
-    const matching = accounts.filter(a => a.providerID === ref.providerID)
+    const matching = accounts.filter(a => a.providerID === ref.providerID && (!task.accountKey || a.key === task.accountKey))
+    const pinnedMissing = Boolean(task.accountKey && matching.length === 0)
     for (const account of matching.length ? matching : [{ key: `missing:${ref.providerID}`, providerID: ref.providerID, label: "Unavailable", credentialID: "", active: false, error: null, windows: [] }]) {
       const rejected: string[] = []
       const reasons = [`${task.role}/${task.tier} preference ${rank + 1}`]
+      if (pinnedMissing) rejected.push("Requested test account unavailable")
       if (!model?.enabled) rejected.push("Model unavailable in caller location")
       if (ref.variant && !model?.variants.some(v => v.id === ref.variant)) rejected.push("Unsupported reasoning variant")
       // An allowlist prevents aliases, explicit overrides and future catalog
@@ -83,6 +86,7 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
         if (w.expiresAt && Date.parse(w.expiresAt) <= now) rejected.push(`Credits expired: ${w.key}`)
       }
       if (concurrency(account.key) >= (policy.quota.maxConcurrentPerAccount[ref.providerID] ?? 1)) rejected.push("Concurrent account capacity reserved")
+      if (policy.quota.maxConcurrentTotal && totalConcurrency() >= policy.quota.maxConcurrentTotal) rejected.push("Concurrent total capacity reached")
       if (cooldown(account.key, `${ref.providerID}/${ref.id}`) > now) rejected.push("Rate-limit/provider cooldown")
       const preferredCritic = task.role === "critic" && family === policy.criticPreferences[familyOf(task.originModel!)]
       // Policy order dominates quota abundance; critic family preference is explicit.

@@ -55,11 +55,17 @@ describe("atomic reservation ledger", () => {
     expect(l.forChild("ses_background")!.state).toBe("running")
     expect(l.concurrency(e.candidate.account.key)).toBe(1)
   })
-  test("request step cap is enforced", () => {
-    const { l, r, a, m, p } = fixture(); p.maxSteps.DEFAULT = 1
+  test("global concurrency cap is enforced across accounts", () => {
+    const { l, r, a, m, p } = fixture(); p.quota.maxConcurrentTotal = 1
+    const e = r.reserve("one", task(), m, a); l.bind(e.id, "ses_child", now)
+    expect(l.totalConcurrency()).toBe(1)
+    expect(() => r.reserve("two", task(), m, a)).toThrow("Concurrent total capacity reached")
+  })
+  test("request backstop is enforced", () => {
+    const { l, r, a, m, p } = fixture(); p.maxRequestsPerExecution = 1
     const e = r.reserve("one", task(), m, a); l.bind(e.id, "ses_child", now)
     r.preflight(e.id, m.find(m => m.id === e.candidate.ref.id)!, a, 1000, 1000)
-    expect(() => r.preflight(e.id, m.find(m => m.id === e.candidate.ref.id)!, a, 1000, 1000)).toThrow("request limit")
+    expect(() => r.preflight(e.id, m.find(m => m.id === e.candidate.ref.id)!, a, 1000, 1000)).toThrow("backstop")
   })
   test("later context growth fails before dispatch", () => {
     const { l, r, a, m } = fixture(); const e = r.reserve("one", task(), m, a); l.bind(e.id, "ses_child", now)

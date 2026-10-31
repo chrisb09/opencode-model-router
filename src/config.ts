@@ -17,6 +17,8 @@ const settingsSchema = z.object({
   collectorAuthorizationFile: z.string().optional(),
   policyFile: z.string().optional(),
   enabled: z.boolean().default(true),
+  /** Temporary operator-only mode for concurrency measurement. Never leave enabled. */
+  testMode: z.boolean().optional(),
   workflow: z.object({ enabled: z.boolean().default(true), captureLabels: z.boolean().default(true) }).strict().optional(),
   credentialBindings: z.array(z.object({ providerID: z.string(), credentialID: z.string(), accountKey: z.string(), credentialFingerprint: z.string().optional(), integrationID: z.string().optional(), workspaceID: z.string().optional() }).strict()).optional(),
 }).strict()
@@ -35,10 +37,14 @@ export async function loadPolicy(file?: string): Promise<Policy> {
   return z.object({
     version: z.literal(1), aliases: z.record(z.string(), z.string().min(1)), roles: z.object(roleMap).strict(),
     fallbacks: tierMap(z.array(z.string())), criticPreferences: z.record(z.string(), z.enum(["gemini", "deepseek", "sol", "kimi", "opus", "unknown"])),
-    outputTokens: tierMap(z.number().int().positive()), maxSteps: tierMap(z.number().int().positive().max(100)),
+    outputTokens: tierMap(z.number().int().positive()),
+    steps: z.object({ default: z.number().int().positive().max(100), extended: z.number().int().positive().max(100) }).strict()
+      .refine(v => v.extended >= v.default, "Extended native step budget must be at least the default"),
+    maxRequestsPerExecution: z.number().int().positive().max(500),
     quota: z.object({ maxAgeMs: z.number().int().positive(), hardReservePp: nonnegative.max(100),
       softReservePp: z.record(z.string(), nonnegative.max(100)), estimatedRequestPp: z.record(z.string(), nonnegative.positive().max(100)),
-      maxConcurrentPerAccount: z.record(z.string(), z.number().int().positive().max(16)) }).strict(),
+      maxConcurrentPerAccount: z.record(z.string(), z.number().int().positive().max(64)),
+      maxConcurrentTotal: z.number().int().positive().max(128).optional() }).strict(),
     allowPaid: z.boolean(), allowKimi: z.boolean(), maxTaskUsd: nonnegative, totalBudgetUsd: nonnegative,
   }).strict().parse(p) as Policy
 }

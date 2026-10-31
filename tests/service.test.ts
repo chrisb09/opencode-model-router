@@ -11,9 +11,9 @@ import { roles } from "../src/types.ts"
 
 const open: Ledger[] = []
 afterEach(() => open.splice(0).forEach(l => l.close()))
-export function serviceFixture() {
+export function serviceFixture(overrides: Record<string, unknown> = {}) {
   const ledger = new Ledger(":memory:"); open.push(ledger)
-  const config = { url: "http://127.0.0.1:7695", collectorUrl: "https://quota.example.com", enabled: true }
+  const config = { url: "http://127.0.0.1:7695", collectorUrl: "https://quota.example.com", enabled: true, ...overrides } as any
   const service = new RouterService(config, defaultPolicy(), ledger, "test-token", (async () => Response.json(snapshot())) as unknown as typeof fetch)
   const client = new RouterClient(config, "test-token", ((url: any, init: any) => service.fetch(new Request(url, init))) as typeof fetch)
   return { ledger, service, client }
@@ -36,6 +36,26 @@ describe("private service API", () => {
     const e = await client.call("/reserve", { id: "test", task: task() })
     expect(e.candidate.family).toBe("gemini")
     expect((await client.call("/status")).safeguards.paidDispatch).toBe("locked")
+  })
+  test("test account pins and test tasks are rejected outside test mode", async () => {
+    const { client } = serviceFixture()
+    await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
+    await expect(client.call("/reserve", { id: "pin", task: task({ accountKey: "google:a@example.com" }) })).rejects.toThrow("test mode")
+    await expect(client.call("/reserve", { id: "test", task: task({ test: true }) })).rejects.toThrow("test mode")
+  })
+  test("test mode disables concurrency admission and exposes its status", async () => {
+    const { client, service, ledger } = serviceFixture({ testMode: true })
+    await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
+    for (let i = 0; i < 5; i++) {
+      const e = await client.call("/reserve", { id: `pin_${i}`, task: task({ requestedModel: defaultPolicy().aliases["gemini-high"], accountKey: "google:a@example.com", test: true }) })
+      expect(e.candidate.account.key).toBe("google:a@example.com")
+      ledger.bind(e.id, `ses_pin_${i}`, now)
+    }
+    const status = await client.call("/status")
+    expect(status.testMode).toBe(true)
+    expect(status.safeguards.concurrencyChecks).toBe("disabled (test mode)")
+    expect(status.safeguards.accountPinning).toBe("test-only")
+    expect(service.router.testMode).toBe(true)
   })
   test("invalid schemas cannot authorize paid spending", async () => {
     const { client } = serviceFixture()

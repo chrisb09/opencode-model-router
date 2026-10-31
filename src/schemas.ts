@@ -7,6 +7,8 @@ export const taskSchema = z.object({
   parentAgent: z.string().min(1), parentSessionID: z.string().startsWith("ses"), directory: z.string().min(1),
   inputTokens: tokens, outputTokens: tokens.positive().optional(), modalities: z.array(z.enum(["text", "image", "pdf", "audio", "video"])).min(1).default(["text"]),
   originModel: z.string().max(300).optional(), requestedModel: z.string().max(300).optional(),
+  steps: z.number().int().positive().max(100).optional(), stepBudget: z.number().int().positive().max(100).optional(),
+  accountKey: z.string().min(1).max(300).optional(), test: z.boolean().optional(),
 }).strict()
 export const catalogSchema = z.object({
   providerID: z.string(), id: z.string(), modelID: z.string().optional(), package: z.string().optional(), enabled: z.boolean(),

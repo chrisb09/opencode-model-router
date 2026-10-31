@@ -50,6 +50,16 @@ describe("agreed policy", () => {
     const a = accounts(); a.forEach(a => a.windows[0].resetAt = new Date(now - 1).toISOString())
     expect(choose(task(), a)).toBeUndefined()
   })
+  test("global concurrency cap blocks all candidates when saturated", () => {
+    const p = defaultPolicy()
+    const result = recommend(p, task(), models(), accounts(), now, () => 0, () => 0, () => 0, () => p.quota.maxConcurrentTotal!)
+    expect(result.candidates.every(c => c.rejected.includes("Concurrent total capacity reached"))).toBe(true)
+  })
+  test("test account pin restricts candidates to the requested account", () => {
+    const selected = choose(task({ requestedModel: defaultPolicy().aliases["gemini-high"], accountKey: "google:b@example.com" }))
+    expect(selected?.account.key).toBe("google:b@example.com")
+    expect(choose(task({ requestedModel: defaultPolicy().aliases["gemini-high"], accountKey: "google:missing@example.com" }))).toBeUndefined()
+  })
   test("Sol input cap differs from total context", () => expect(choose(task({ requestedModel: defaultPolicy().aliases["sol-high"], inputTokens: 500001 }))).toBeUndefined())
   test("output budget and context are checked together", () => expect(choose(task({ inputTokens: 999000, outputTokens: 4096 }))).toBeUndefined())
   test("capabilities filter before selection", () => expect(choose(task({ modalities: ["audio"] }))).toBeUndefined())

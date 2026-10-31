@@ -45,6 +45,14 @@ export interface Task {
   modalities: string[]
   originModel?: string
   requestedModel?: string
+  /** Requested native OpenCode step budget. The actual bucket is recorded separately. */
+  steps?: number
+  /** Native step budget of the selected agent variant (30 default, 60 extended). */
+  stepBudget?: number
+  /** Test-only account pin. Rejected unless the router is in test mode. */
+  accountKey?: string
+  /** Test-only marker so probe traffic does not pollute normal performance statistics. */
+  test?: boolean
 }
 export interface Candidate {
   model: string
@@ -64,13 +72,18 @@ export interface Policy {
   fallbacks: Record<Tier, string[]>
   criticPreferences: Partial<Record<Family, Family>>
   outputTokens: Record<Tier, number>
-  maxSteps: Record<Tier, number>
+  /** Native OpenCode step budgets. Extended variants exist above the default. */
+  steps: { default: number; extended: number }
+  /** High runaway backstop; not a tier budget. Native steps normally stop first. */
+  maxRequestsPerExecution: number
   quota: {
     maxAgeMs: number
     hardReservePp: number
     softReservePp: Record<string, number>
     estimatedRequestPp: Record<string, number>
     maxConcurrentPerAccount: Record<string, number>
+    /** Optional global cap across all managed accounts. */
+    maxConcurrentTotal?: number
   }
   allowPaid: boolean
   allowKimi: boolean

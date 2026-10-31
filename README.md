@@ -1,6 +1,7 @@
 # OpenCode quota-aware subagent router
 
-A local, deterministic router for OpenCode **2.1.4**. Keep using **Plan** and
+A local, deterministic router for OpenCode **2.x**. Runtime validation used
+**2.2.1**; the plugin/client dependencies are pinned to 2.2.5. Keep using **Plan** and
 **Build** and select their models normally. The existing `subagent` tool is
 wrapped per invocation; agent definitions are **not** globally rewritten to
 select concurrent models.
@@ -15,8 +16,11 @@ Opus 5.5 has **no specified reasoning variant**.
   general, debugger, reviewer, architect, critic.
 - Four tiers, separate importance, context/output and modality checks.
 - Critic family independence and original-session provenance.
-- Shared local SQLite reservations, per-account concurrency limits, cooldowns,
-  decision explanations and measured request performance.
+- Shared local SQLite reservations, measured per-account and global concurrency
+  limits, cooldowns, decision explanations and measured request performance.
+- Native OpenCode step budgets: 30 by default, with a hidden 60-step extended
+  agent variant available through optional `routing.steps`. The router keeps only
+  a high runaway backstop instead of per-tier 10/20/30 request caps.
 - Live quota integration with the **existing** `ai_usage` service at
   `https://usage.christian-f-brinkmann.de`; no duplicate provider polling logic.
 - Request-local Antigravity account pins, without global credential activation
@@ -165,9 +169,9 @@ merely to make a denial disappear.
 Policy configuration includes:
 
 - Model aliases and ordered role/tier candidates/fallbacks.
-- Output budgets and per-execution request limits.
+- Output budgets, native step buckets and a high request backstop.
 - Maximum quota age, hard reserve and soft conservation floors.
-- Estimated percentage-point usage and per-account concurrency.
+- Estimated percentage-point usage, per-account concurrency and a global cap.
 - Critic family preferences.
 
 Soft floors can be relaxed to the hard floor for critical work. A user tier
@@ -190,6 +194,39 @@ durable across restarts. Model/credential metadata is refreshed every minute and
 at dispatch; quota-source reads are deduplicated and cached for 30 seconds.
 Stale/reset-crossing quotas request a collector refresh, respecting its cooldown.
 
+## Native steps and concurrency
+
+The seven visible agents use native `steps: 30`. A hidden `<role>-extended`
+variant uses `steps: 60`. The coordinator may set `routing.steps` to 1–60; values
+above 30 select the extended variant. This keeps OpenCode's own final-step
+summary behavior. The router's `maxRequestsPerExecution` (100) is a runaway
+backstop, not a tier budget. Continuations retain the child's step variant; use a
+new child to change it.
+
+Concurrency was measured locally with tiny and read-only tool-loop probes:
+
+| Provider | Measured clean concurrency | Policy cap |
+|---|---:|---:|
+| Antigravity | 16 per account (one account; 8 on two others) | 8 per account |
+| OpenCode Go / DeepSeek | 16 total | 8 total |
+| OpenAI Codex / Sol | 6 total | 4 total |
+
+The global cap is 16. These are local admission limits, not provider-published
+concurrency numbers; the providers meter quota windows and may throttle bursts.
+The test probe is available for remeasurement:
+
+```sh
+bun /home/christian/git/opencode-model-router/scripts/concurrency-probe.ts \
+  --provider antigravity --account 'google:user@example.com' \
+  --directory /home/christian --levels 1,2,4,8
+```
+
+It requires a temporary `testMode` in the private router config, which disables
+only concurrency admission. Quota, cooldown, identity, context and paid/Kimi
+gates remain active. Never leave test mode enabled; it also permits test-only
+account pinning. Probe tasks are marked `test` and excluded from ordinary
+performance statistics.
+
 ## Paid models and accounting limitations
 
 **Paid Opus and Kimi dispatch are locked in this release**, even if policy budget
@@ -207,7 +244,9 @@ Subscription reservation quantities are explicitly **estimated percentage
 points**, not exact provider token capacity. Go raw meter units are exposed when
 available, but their conversion to task consumption is not assumed. Codex and
 Antigravity do not expose sufficient absolute capacity for a mathematical token
-reservation. Configure conservative headroom and concurrency for your workload.
+reservation. The installed caps are conservative, locally measured burst limits;
+provider behavior and quotas can change, so remeasure after material provider
+changes and keep headroom for other clients.
 
 The ledger prevents oversubscription among managed local tasks; it cannot stop
 other machines, manually selected primaries, the Codex CLI or unrelated API
@@ -220,17 +259,22 @@ observation can reflect it; actual token counts remain **null** when unavailable
 Aborted/ambiguous requests retain uncertainty and may retain capacity indefinitely;
 time passing alone is not proof that an upstream request stopped or was free.
 Do not clear reservations merely to get past a denial. Automatic ambiguous
-recovery is not implemented. An explicit operator recovery is available:
+recovery is not implemented. Explicit operator recovery is available:
 
 ```sh
+# A running/reserved execution whose native child is idle:
+bun /home/christian/git/opencode-model-router/src/cli.ts recover '<executionID>' --confirm-provider-idle
+
+# A terminal/uncertain execution that only needs reconciliation:
 bun /home/christian/git/opencode-model-router/src/cli.ts reconcile '<executionID>' --confirm-provider-idle
 ```
 
 Only confirm after checking that no provider request remains active. The service
 also verifies that the native child is idle and requires an authoritative quota
-observation newer than termination. It releases the concurrency slot without
-inventing token measurements, retaining estimated debt until a subsequent quota
-observation. This command is not available through the read-only MCP tools.
+observation newer than the child's last observed update. It releases the
+concurrency slot without inventing token measurements, retaining estimated debt
+until a subsequent quota observation. These commands are not available through
+the read-only MCP tools.
 
 Input bounds conservatively include serialized request bytes plus overhead, not
 just the coordinator's estimate. This can reject some contexts that a tokenizer
@@ -287,7 +331,7 @@ npm audit --omit=dev
 
 Runtime is **Bun 1.3.14+**, not the system Node version. Tests use in-memory
 databases and mocked providers; they do not touch real queues, configuration or
-authentication stores. OpenCode plugin/client dependencies are pinned to 2.1.4.
+authentication stores. OpenCode plugin/client dependencies are pinned to 2.2.5.
 
 The installer is deliberately additive and refuses to overwrite an existing
 router installation or custom agent definitions. It expects the current global
@@ -297,9 +341,13 @@ router installation or custom agent definitions. It expects the current global
 
 - **No eligible model:** inspect recent decisions. Check all windows, freshness,
   context/output bounds, credential bindings, concurrency and cooldowns.
+- **Stale running execution:** verify the native child is idle, then use
+  `recover <executionID> --confirm-provider-idle`. Do not clear reservations just
+  to bypass a denial.
 - **Unknown quota:** fix the collector or identity mapping; never substitute 100%.
-- **Stale registry:** inspect plugin status and reload the location; the router
-  does not reuse model metadata from another project.
+- **Stale registry:** inspect plugin status and reload the location. Normal
+  dispatch requires the exact project registry; only explicit recovery may fall
+  back to the newest registry for an inactive project directory.
 - **Quota service authentication failure:** repair the private authorization file
   using the existing credential; do not generate provider API keys.
 - **Router unavailable:** new delegations fail closed. Primary work remains

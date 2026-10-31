@@ -183,6 +183,28 @@ describe("native subagent dispatch integration", () => {
     expect(f.calls[1].model).toBe(defaultPolicy().aliases.deepseek)
     expect(f.calls[1].prompt).toContain(defaultPolicy().aliases["gemini-medium"])
   })
+  test("native step budget selects the hidden extended agent and is recorded", async () => {
+    const f = await fixture(); const result = await f.invoke({ routing: { steps: 45 } })
+    expect(f.calls[0].agent).toBe("explore-extended")
+    const e = f.ledger.forChild(result.metadata.sessionID)!
+    expect(e.task.steps).toBe(45)
+    expect(e.task.stepBudget).toBe(defaultPolicy().steps.extended)
+    expect(result.metadata.routing).toMatchObject({ steps: defaultPolicy().steps.extended, requestedSteps: 45 })
+  })
+  test("native step budget defaults to the base agent", async () => {
+    const f = await fixture(); const result = await f.invoke({})
+    expect(f.calls[0].agent).toBe("explore")
+    expect(result.metadata.routing).toMatchObject({ steps: defaultPolicy().steps.default, requestedSteps: defaultPolicy().steps.default })
+  })
+  test("native step budget above the configured maximum is rejected before dispatch", async () => {
+    const f = await fixture()
+    await expect(f.invoke({ routing: { steps: defaultPolicy().steps.extended + 1 } })).rejects.toThrow("configured maximum")
+    expect(f.calls).toHaveLength(0)
+  })
+  test("continuation cannot change the native step budget", async () => {
+    const f = await fixture(); const first = await f.invoke({ routing: { steps: defaultPolicy().steps.default } })
+    await expect(f.invoke({ sessionID: first.metadata.sessionID, routing: { steps: defaultPolicy().steps.extended } })).rejects.toThrow("step budget change")
+  })
   test("primary request hooks do not consult a down router", async () => {
     const f = await fixture()
     f.client.call = async () => { throw new Error("Router down") }

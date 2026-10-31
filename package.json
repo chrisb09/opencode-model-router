@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "@opencode/client": "2.1.4",
-    "@opencode/plugin": "2.1.4",
+    "@opencode/client": "2.2.5",
+    "@opencode/plugin": "2.2.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -27,7 +27,7 @@ export class RouterService {
   readonly workflow: WorkflowStore | null
   private workflowFailures = 0
   constructor(readonly config: Settings, readonly policy: Policy, readonly ledger: Ledger, readonly token: string, fetcher: typeof fetch = fetch, readonly upstreamFetch: typeof fetch = fetch) {
-    this.router = new Router(policy, ledger); this.source = new QuotaSource(config, fetcher)
+    this.router = new Router(policy, ledger, Date.now, config.testMode === true); this.source = new QuotaSource(config, fetcher)
     try { this.workflow = new WorkflowStore(ledger.db, config.workflow?.captureLabels !== false) }
     catch { this.workflow = null; this.workflowFailures++ }
   }
@@ -39,6 +39,18 @@ export class RouterService {
     const r = this.ledger.load<Registry>(`registry:${directory}`)
     if (!r || Date.now() - r.updatedAt > 180_000) throw new Error("OpenCode model/credential registry is stale or unavailable")
     return r
+  }
+  /**
+   * Recovery may target a session in an inactive project whose registry has not
+   * been refreshed. The newest registry is sufficient for credential lookup;
+   * reconciliation still requires an authoritative fresh quota observation.
+   */
+  latestRegistry(): Registry {
+    const rows = this.ledger.db.query<{ key: string; value: string }, []>("SELECT key,value FROM registry WHERE key LIKE 'registry:%'").all()
+    const registries = rows.map(row => ({ directory: row.key.slice(9), ...JSON.parse(row.value) as Registry }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    if (!registries.length) throw new Error("No OpenCode model/credential registry is available")
+    return registries[0]
   }
   async accounts(bindings: Binding[], refresh = false): Promise<Account[]> {
     let snapshot = await this.source.get(refresh)
@@ -59,13 +71,13 @@ export class RouterService {
         const uniqueBindings = [...new Map(registries.flatMap(r => r.bindings).map(b => [b.credentialID, b])).values()]
         let accounts: Account[] = []
         try { accounts = await this.accounts(uniqueBindings) } catch {}
-        return json({ enabled: this.config.enabled, quotaSource: this.config.collectorUrl, quotaError: this.source.lastError,
-          policy: { aliases: this.policy.aliases, roles: this.policy.roles, quota: this.policy.quota },
+        return json({ enabled: this.config.enabled, testMode: this.config.testMode === true, quotaSource: this.config.collectorUrl, quotaError: this.source.lastError,
+          policy: { aliases: this.policy.aliases, roles: this.policy.roles, steps: this.policy.steps, maxRequestsPerExecution: this.policy.maxRequestsPerExecution, quota: this.policy.quota },
           accounts: accounts.map(a => ({ ...a, windows: a.windows.map(w => ({ ...w, ageMs: Date.now() - w.checkedAt, stale: Date.now() - w.checkedAt > this.policy.quota.maxAgeMs, locallyReservedPp: this.ledger.pressure(a.key, w.key, w.checkedAt) })) })),
           models: [...new Map(registries.flatMap(r => r.models).map(m => [`${m.providerID}/${m.id}`, m])).values()],
           locations: registries.map(r => ({ directory: r.directory, updatedAt: r.updatedAt, models: r.models.map(m => `${m.providerID}/${m.id}`) })),
           workflow: { enabled: this.config.workflow?.enabled !== false, available: this.workflow !== null, localOnly: true, defaultExportIncludesText: false, captureFailures: this.workflowFailures },
-          safeguards: { paidDispatch: "locked", kimiDispatch: "locked", quotaAccounting: "estimated percentage reservations", scope: "managed local subagents only", primaryModelSelection: "unchanged" }, ...this.ledger.status() })
+          safeguards: { paidDispatch: "locked", kimiDispatch: "locked", quotaAccounting: "estimated percentage reservations", concurrencyChecks: this.config.testMode ? "disabled (test mode)" : "enabled", accountPinning: this.config.testMode ? "test-only" : "disabled", scope: "managed local subagents only", primaryModelSelection: "unchanged" }, ...this.ledger.status() })
       }
       if (path === "/proxy" && request.method === "POST") return await this.proxy(request)
       if (request.method !== "POST") return json({ error: "Not found" }, 404)
@@ -120,6 +132,8 @@ export class RouterService {
       if (path === "/recommend" || path === "/reserve") {
         if (!this.config.enabled) return json({ error: "Router disabled" }, 409)
         const input = z.object({ id: idSchema.optional(), task: taskSchema, workflow: delegationTraceSchema.optional() }).strict().parse(body)
+        if (input.task.accountKey && !this.config.testMode) throw new Error("Account pinning is only available in router test mode")
+        if (input.task.test && !this.config.testMode) throw new Error("Test tasks are only allowed in router test mode")
         const registry = this.registry(input.task.directory)
         let accounts = await this.accounts(registry.bindings)
         // Large conservative debt can exhaust a soft floor before the collector's
@@ -152,6 +166,30 @@ export class RouterService {
         const execution = this.ledger.finish(input.id, input.state, Date.now())
         this.trace(s => s.execution(execution)); return json(execution)
       }
+      if (path === "/recover") {
+        const input = z.object({ id: idSchema, confirmation: z.literal("provider-idle-confirmed") }).strict().parse(body)
+        let execution = this.ledger.get(input.id)
+        if (!execution || !execution.childSessionID) throw new Error("Unknown child execution")
+        const endpoint = await Service.discover()
+        if (!endpoint) throw new Error("Cannot verify the native child is idle")
+        const opencode = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
+        if ((await opencode.session.active())[execution.childSessionID]) throw new Error("Native child is still running; recovery refused")
+        // The child's last observed local update is the termination evidence. A
+        // later /finish timestamp must not make the fresh quota check impossible.
+        const terminatedAt = execution.updatedAt
+        if (["reserved", "running"].includes(execution.state)) {
+          const finished = this.ledger.finish(execution.id, "failed", Date.now())
+          execution = finished
+          this.trace(s => s.execution(finished))
+        }
+        let registry: Registry
+        try { registry = this.registry(execution.task.directory) }
+        catch { registry = this.latestRegistry() }
+        const account = (await this.accounts(registry.bindings, true)).find(a => a.key === execution.candidate.account.key)
+        if (!account || account.windows.some(w => w.source !== "provider" || !Number.isFinite(w.checkedAt) || w.checkedAt <= terminatedAt || w.checkedAt > Date.now())) throw new Error("A fresh authoritative quota observation after termination is required")
+        const recovered = this.ledger.reconcile(execution.id, Date.now())
+        this.trace(s => s.execution(recovered)); return json(recovered)
+      }
       if (path === "/reconcile") {
         const input = z.object({ id: idSchema, confirmation: z.literal("provider-idle-confirmed") }).strict().parse(body)
         const execution = this.ledger.get(input.id)
@@ -160,7 +198,9 @@ export class RouterService {
         if (!endpoint) throw new Error("Cannot verify the native child is idle")
         const opencode = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
         if ((await opencode.session.active())[execution.childSessionID]) throw new Error("Native child is still running; reconciliation refused")
-        const registry = this.registry(execution.task.directory)
+        let registry: Registry
+        try { registry = this.registry(execution.task.directory) }
+        catch { registry = this.latestRegistry() }
         const account = (await this.accounts(registry.bindings, true)).find(a => a.key === execution.candidate.account.key)
         if (!account || account.windows.some(w => w.source !== "provider" || !Number.isFinite(w.checkedAt) || w.checkedAt <= execution.updatedAt || w.checkedAt > Date.now())) throw new Error("A fresh authoritative quota observation after termination is required")
         const reconciled = this.ledger.reconcile(execution.id, Date.now())

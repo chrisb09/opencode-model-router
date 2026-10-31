@@ -9,6 +9,7 @@ import { coordinatorInstructions } from "../src/agents.ts"
 import { loadPolicy, settings as readSettings } from "../src/config.ts"
 import type { Binding } from "../src/collector.ts"
 import { modelString } from "../src/policy.ts"
+import { agentVariant, selectStepBudget } from "../src/steps.ts"
 import { roles, type CatalogModel, type Execution, type Task, type Policy } from "../src/types.ts"
 import { guardLanguage } from "./guard.ts"
 import { credentialFingerprint, goAuthorizationFingerprint } from "../src/identity.ts"
@@ -20,6 +21,7 @@ export const routingSchema = {
     tier: { type: "string", enum: ["LOW", "DEFAULT", "HARD", "EXCEPTIONAL"] },
     importance: { type: "string", enum: ["low", "normal", "high", "critical"] },
     inputTokens: { type: "integer", minimum: 0 }, outputTokens: { type: "integer", minimum: 1 },
+    steps: { type: "integer", minimum: 1, maximum: 100, description: "Requested native OpenCode step budget; default 30, extended variant up to the configured maximum" },
     originSessionID: { type: "string", description: "Original child session to independently review; omit when reviewing the primary session's work" },
     modalities: { type: "array", items: { type: "string", enum: ["text", "image", "pdf", "audio", "video"] } },
     taskID: { type: "string", description: "Logical task ID returned by workflow_annotate; optional" },
@@ -32,7 +34,7 @@ export const subagentInput = {
     sessionID: { type: "string" }, background: { type: "boolean" }, routing: routingSchema,
   }, required: ["agent", "description", "prompt"], additionalProperties: false,
 } as const
-const hints = z.object({ tier: z.enum(["LOW", "DEFAULT", "HARD", "EXCEPTIONAL"]).default("DEFAULT"), importance: z.enum(["low", "normal", "high", "critical"]).default("normal"), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().positive().optional(), originSessionID: z.string().startsWith("ses").optional(), modalities: z.array(z.string()).optional(), taskID: z.string().regex(/^[A-Za-z0-9_.:-]+$/).max(200).optional(), purpose: z.enum(purposes).optional() }).strict()
+const hints = z.object({ tier: z.enum(["LOW", "DEFAULT", "HARD", "EXCEPTIONAL"]).default("DEFAULT"), importance: z.enum(["low", "normal", "high", "critical"]).default("normal"), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().positive().optional(), steps: z.number().int().positive().max(100).optional(), originSessionID: z.string().startsWith("ses").optional(), modalities: z.array(z.string()).optional(), taskID: z.string().regex(/^[A-Za-z0-9_.:-]+$/).max(200).optional(), purpose: z.enum(purposes).optional() }).strict()
 
 export default Plugin.define({ id: "quota-model-router", async setup(ctx) { return setupRouter(ctx) } })
 
@@ -106,7 +108,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
     editor.update("subagent", tool => {
       const native = tool.execute
       tool.input = subagentInput
-      tool.description += "\nQuota-aware routing is enforced automatically. Optional routing metadata: tier, importance, inputTokens, outputTokens, originSessionID and modalities. Paid Opus and Kimi are locked. Use a new child for escalation."
+      tool.description += "\nQuota-aware routing is enforced automatically. Optional routing metadata: tier, importance, inputTokens, outputTokens, steps, originSessionID and modalities. Native steps default to 30; steps >30 use an internal extended variant up to the configured maximum. Paid Opus and Kimi are locked. Use a new child for escalation."
       tool.execute = async (value, context) => {
         if (!initialized) throw new Tool.Error({ message: "Quota router is not initialized; delegation blocked" })
         const input = value as any
@@ -125,16 +127,23 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
         const old = input.sessionID ? await client.call<Execution | null>("/execution", { childSessionID: input.sessionID }) : null
         if (input.sessionID && (!old || old.task.parentSessionID !== context.sessionID || old.task.role !== input.agent)) throw new Tool.Error({ message: "Only a matching routed child can be continued" })
         if (old && input.model && input.model !== old.candidate.model) throw new Tool.Error({ message: "Use a new child session for a model change" })
+        const oldRequestedSteps = old?.task.steps ?? old?.task.stepBudget ?? policy.steps.default
+        if (old && routing.steps !== undefined && routing.steps !== oldRequestedSteps) throw new Tool.Error({ message: "Use a new child session for a native step budget change" })
+        let steps: ReturnType<typeof selectStepBudget>
+        try { steps = selectStepBudget(policy, routing.steps ?? oldRequestedSteps) }
+        catch (error) { throw new Tool.Error({ message: error instanceof Error ? error.message : "Invalid native step budget" }) }
+        const stepBudget = old?.task.stepBudget ?? steps.budget
         const task: Task = { role: input.agent, tier: routing.tier, importance: routing.importance, parentAgent: context.agent, parentSessionID: context.sessionID,
           directory: ctx.location.directory, inputTokens: Math.max(routing.inputTokens ?? 0, Buffer.byteLength(input.prompt)), outputTokens: routing.outputTokens,
-          modalities: routing.modalities ?? ["text"], originModel: origin.model ? modelString(origin.model) : undefined, requestedModel: old?.candidate.model ?? (input.model || undefined) }
+          modalities: routing.modalities ?? ["text"], originModel: origin.model ? modelString(origin.model) : undefined, requestedModel: old?.candidate.model ?? (input.model || undefined),
+          steps: steps.requested, stepBudget }
         const id = `${context.sessionID}:${context.messageID}:${context.id}`
         let execution: Execution
         try { execution = old && ["reserved", "running"].includes(old.state) ? old : await client.call<Execution>("/reserve", { id, task, workflow: { taskID: routing.taskID, purpose: routing.purpose, label: String(input.description).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 160), background: input.background ?? false, previousExecutionID: old?.id } }) }
         catch (error) { throw new Tool.Error({ message: error instanceof Error ? error.message : "Routing denied" }) }
         let child: string | null = execution.childSessionID
         let completed = false
-        const nativeInput = { ...input, model: execution.candidate.model }
+        const nativeInput = { ...input, agent: agentVariant(input.agent, policy, execution.task.stepBudget ?? policy.steps.default), model: execution.candidate.model }
         delete nativeInput.routing
         if (task.role === "critic") nativeInput.prompt = `Original model: ${task.originModel}. Original session: ${origin.id}. Independently verify the evidence; do not claim a different provider alone makes this independent.\n\n${input.prompt}`
         try {
@@ -148,7 +157,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
           } } as ToolContext)
           const state = (result.metadata as any)?.status
           if (state !== "running") { await client.call("/finish", { id: execution.id, state: "completed" }); completed = true }
-          return { ...result, metadata: { ...result.metadata, routing: { executionID: execution.id, model: execution.candidate.model, account: execution.candidate.account.key, tier: task.tier, importance: task.importance } } }
+          return { ...result, metadata: { ...result.metadata, routing: { executionID: execution.id, model: execution.candidate.model, account: execution.candidate.account.key, tier: task.tier, importance: task.importance, steps: execution.task.stepBudget, requestedSteps: execution.task.steps } } }
         } catch (error) {
           // Do not automatically retry another implementation agent after it may
           // have performed writes. Preserve its child for an explicit handoff.

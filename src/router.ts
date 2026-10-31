@@ -4,10 +4,13 @@ import { recommend } from "./policy.ts"
 import { Ledger } from "./ledger.ts"
 
 export class Router {
-  constructor(readonly policy: Policy, readonly ledger: Ledger, readonly clock = Date.now) {}
+  constructor(readonly policy: Policy, readonly ledger: Ledger, readonly clock = Date.now, readonly testMode = false) {}
   recommend(task: Task, models: CatalogModel[], accounts: Account[]) {
     return recommend(this.policy, task, models, accounts, this.clock(),
-      (k, w, at) => this.ledger.pressure(k, w, at), k => this.ledger.concurrency(k), (k, m) => this.ledger.cooldown(k, m))
+      (k, w, at) => this.ledger.pressure(k, w, at),
+      this.testMode ? () => 0 : k => this.ledger.concurrency(k),
+      (k, m) => this.ledger.cooldown(k, m),
+      this.testMode ? () => 0 : () => this.ledger.totalConcurrency())
   }
   reserve(id: string, task: Task, models: CatalogModel[], accounts: Account[]) {
     return this.ledger.atomic(() => {
@@ -27,7 +30,7 @@ export class Router {
       if (!execution || execution.state !== "running") throw new Error("No active routed execution")
       if (model.providerID !== execution.candidate.ref.providerID || model.id !== execution.candidate.ref.id) throw new Error("Routed child model changed; create a new child for escalation")
       if (!Number.isSafeInteger(inputBound) || inputBound < 0 || !Number.isSafeInteger(outputBound) || outputBound < 1 || outputBound > execution.candidate.outputTokens || outputBound > model.limit.output || inputBound > Math.min(model.limit.input ?? Infinity, model.limit.context - outputBound)) throw new Error("Request exceeds context/output bounds; split the task instead of truncating")
-      if (this.ledger.requestCount(executionID) >= this.policy.maxSteps[execution.task.tier]) throw new Error("Routed execution request limit reached")
+      if (this.ledger.requestCount(executionID) >= this.policy.maxRequestsPerExecution) throw new Error(`Routed execution request backstop reached (${this.policy.maxRequestsPerExecution} requests); start a new child with a handoff`)
       const account = accounts.find(a => a.key === execution.candidate.account.key && a.credentialID === execution.candidate.account.credentialID)
       if (!account) throw new Error("Reserved credential is no longer available")
       // Existing task owns its concurrency slot. Exclude its unconsumed initial
@@ -35,7 +38,9 @@ export class Router {
       const first = this.ledger.requestCount(executionID) === 0
       const check = recommend(this.policy, { ...execution.task, requestedModel: execution.candidate.model, inputTokens: Math.max(0, inputBound - 8192), outputTokens: outputBound }, [model], [account], this.clock(),
         (k, w, at) => Math.max(0, this.ledger.pressure(k, w, at) - (first ? execution.candidate.estimatedRequestPp : 0)),
-        k => Math.max(0, this.ledger.concurrency(k) - 1), (k, m) => this.ledger.cooldown(k, m))
+        this.testMode ? () => 0 : k => Math.max(0, this.ledger.concurrency(k) - 1),
+        (k, m) => this.ledger.cooldown(k, m),
+        this.testMode ? () => 0 : () => Math.max(0, this.ledger.totalConcurrency() - 1))
       const admissible = check.candidates.find(c => !c.rejected.length)
       if (!admissible) throw new Error("Reserved account no longer eligible: " + check.candidates.flatMap(c => c.rejected).join("; "))
       const id = randomUUID()

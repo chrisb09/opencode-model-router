@@ -1,14 +1,14 @@
 # Validation and handoff
 
-Validated locally on 2026-10-24 with OpenCode **2.1.4** and Bun **1.3.14**.
+Validated locally on 2026-10-24 and updated on 2026-10-31 with OpenCode **2.2.1** and Bun **1.3.14**. The plugin/client dependencies are pinned to **2.2.5**; the V2 plugin API remained compatible.
 
 ## Final automated results
 
 | Component | Validation | Result |
 |---|---|---|
-| Router | `bun test tests` | 188 passed, 0 failed |
+| Router | `bun test tests` | 202 passed, 0 failed |
 | Router | `npm run typecheck` | Passed |
-| Router | `npm audit --omit=dev` | 0 vulnerabilities |
+| Router | `npm audit --omit=dev` | 24 moderate transitive advisories; no high/critical; npm reports no fix |
 | Antigravity adapter | `npm test` | 1,242 passed; 25 existing todo tests |
 | Antigravity adapter | Typecheck and build | Passed |
 | Existing quota service | `npm test` | 92 passed, 0 failed |
@@ -16,6 +16,11 @@ Validated locally on 2026-10-24 with OpenCode **2.1.4** and Bun **1.3.14**.
 | Observatory | Complete `bun test tests` suite | 55 passed, 0 failed |
 | Observatory | All workspace typechecks | Passed |
 | Observatory plugin | Workspace build | Passed |
+
+`npm audit --omit=dev` reports 24 moderate transitive advisories in the OpenCode
+plugin/client dependency tree (glob/minimatch and npm packaging tooling). There
+are no high or critical advisories, and npm reports no fix available in the
+current dependency graph. They are not router source findings.
 
 Observatory tests used the existing **local `observatory_test` PostgreSQL
 database** and isolated XDG config/data/state directories under `/tmp/opencode`.
@@ -51,9 +56,13 @@ Codex/Go parsers and their regressions.
   fixes include setup fail-closed behavior, future quota timestamps, alternate
   output limits, SDK model-object identity, actual native account identity,
   mixed-transport rejection and explicit uncertainty reconciliation.
-- Final router inspection showed **no reserved, running or uncertain executions
-  and no unsettled requests**. Historical failed executions remain in the ledger.
-  Counts may continue changing as other live sessions use the installation.
+- The 2026-10-24 inspection showed **no reserved, running or uncertain
+  executions and no unsettled requests**. Historical failed executions remain in
+  the ledger. Counts may continue changing as other live sessions use the
+  installation. The 2026-10-31 follow-up found and cleared two stale running
+  executions; after cleanup and the concurrency probes, `router status` reported
+  no running executions. Probe tasks are counted separately and excluded from
+  performance statistics.
 - Observatory still targets `https://observatory.christian-f-brinkmann.de` with
   the original installation identity. Upload acknowledgments are advancing and
   the status tool reports no upload error. A transient pending queue is normal
@@ -66,6 +75,50 @@ Codex/Go parsers and their regressions.
   receive the guidance without replacing base instructions, changing primary
   models or unconditionally launching agents; children do not receive coordinator
   delegation encouragement. Typecheck and the current router suite passed.
+
+## Native steps and concurrency validation (2026-10-31)
+
+The router no longer applies tier-based 10/20/30 request caps. The seven visible
+agents use native `steps: 30`; hidden `<role>-extended` variants use `steps: 60`.
+`routing.steps` 1–60 selects the base or extended variant, and the native runner
+retains its graceful final-step summary. `maxRequestsPerExecution: 100` is only a
+runaway backstop. Live checks confirmed:
+
+- `routing.steps: 45` created a child on `reviewer-extended` with native steps 60;
+  the router recorded requested steps 45 and actual step budget 60.
+- A default `explore` child stayed on the base variant with native steps 30.
+- A forced DeepSeek child completed after the stale-slot cleanup, proving the
+  OpenCode Go account was usable again.
+- Two simultaneous Sol children completed under the new OpenAI cap of 4.
+
+Two stale `general`/DeepSeek executions from 2026-10-24 were found still marked
+`running` although their native children had been idle for 6.9 days. They held
+both old `opencode-go` slots and caused immediate `Concurrent account capacity
+reserved` denials. They were finished and reconciled through the operator path.
+A new `router recover <executionID> --confirm-provider-idle` command verifies the
+native child is idle before finishing/reconciling a running reservation; the
+service now falls back to the newest registry for inactive project directories.
+
+Temporary `testMode` disabled concurrency admission only; quota, cooldown,
+identity, context and paid/Kimi gates remained active. Probe traffic was marked
+`test` and excluded from ordinary performance statistics. Measurements:
+
+| Provider | Clean levels | Notes |
+|---|---|---|
+| Antigravity | 1,2,3,4,6,8,10,12,16 per account | 16 concurrent completed on one account; 8 on two other accounts. An 8-child realistic read-only tool-loop pass completed with two requests per child. No 429s. |
+| OpenCode Go / DeepSeek | 1,2,3,4,6,8,10,12,16 total | All completed; no 429s. |
+| OpenAI Codex / Sol | 1,2,3,4,6 total | 6 concurrent completed. An 8-child attempt had 6 complete and 2 denied by the router's local `codex-weekly` quota-debt floor, not a provider 429. |
+
+Installed caps: Antigravity 8 per account, OpenCode Go 8 total, OpenAI 4 total,
+global 16. Test mode was disabled afterward and the live service reports
+`concurrencyChecks: enabled` and `accountPinning: disabled`. These are local
+burst limits, not provider-published concurrency numbers; provider quotas and
+behavior can change.
+
+Antigravity's official documentation states that accessing it through
+third-party software violates its Terms of Service. The provider remains an
+optional/experimental route; this validation does not assert compliance with
+that term.
 
 ## Rollback validation
 
@@ -80,7 +133,7 @@ remain only in workflow task rows and are redacted from default reads/exports. N
 Observatory workflow contract, remote export, hosted dashboard deployment or
 prompt/response capture was added.
 
-The router suite now has **188 passing tests**. New coverage includes annotation
+The router suite now has **202 passing tests**. New coverage includes annotation
 ownership and acyclic session-scoped relations, null-vs-zero usage, redaction and
 Mermaid/HTML injection, post-commit trace-failure isolation from quota gates,
 additive SQLite reopen compatibility, deletion cascades, capacity markers,
@@ -153,8 +206,9 @@ subsequently edited agent/MCP definitions. See the README for the command.
    rejects missing raw counters rather than trusting normalized 100% displays.
 8. **Reload while idle where possible.** Successful captured native tool snapshots
    survive plugin reload as required by V2; initialization failures retain a deny
-   gate. Native background events are durable, but the router does not claim an
-   automatic recovery mechanism for every interrupted or missed-lifecycle case.
+   gate. Native background events are durable, but automatic recovery for every
+   interrupted or missed-lifecycle case is not implemented. `recover` verifies
+   the native child idle before finishing/reconciling a stale running execution.
 
 ## Source and version-control handoff
 

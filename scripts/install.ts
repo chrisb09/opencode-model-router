@@ -66,7 +66,7 @@ for (const providerID of ["antigravity", "openai", "opencode-go", "oneprovider"]
       workspaceID: providerID === "opencode-go" && saved?.value.type === "oauth" && typeof saved.value.metadata?.orgID === "string" ? saved.value.metadata.orgID : undefined })
   }
 }
-const settings = { url: "http://127.0.0.1:7695", collectorUrl: "https://usage.christian-f-brinkmann.de", collectorAuthorizationFile: auth, policyFile, enabled: true, credentialBindings, workflow: { enabled: true, captureLabels: true } }
+const settings = { url: "http://127.0.0.1:7695", collectorUrl: "https://usage.christian-f-brinkmann.de", collectorAuthorizationFile: auth, policyFile, enabled: true, testMode: false, credentialBindings, workflow: { enabled: true, captureLabels: true } }
 await writeFile(p.config, JSON.stringify(settings, null, 2) + "\n", { mode: 0o600 })
 await mkdir(dirname(unit), { recursive: true })
 await writeFile(unit, `[Unit]\nDescription=Quota-aware OpenCode subagent router\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory=${repo}\nExecStart=/usr/bin/bun ${repo}/src/cli.ts serve\nRestart=on-failure\nRestartSec=3\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`)
