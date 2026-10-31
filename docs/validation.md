@@ -6,7 +6,7 @@ Validated locally on 2026-10-24 and updated on 2026-10-31 with OpenCode **2.2.1*
 
 | Component | Validation | Result |
 |---|---|---|
-| Router | `bun test tests` | 202 passed, 0 failed |
+| Router | `bun test tests` | 205 passed, 0 failed |
 | Router | `npm run typecheck` | Passed |
 | Router | `npm audit --omit=dev` | 24 moderate transitive advisories; no high/critical; npm reports no fix |
 | Antigravity adapter | `npm test` | 1,242 passed; 25 existing todo tests |
@@ -109,11 +109,18 @@ identity, context and paid/Kimi gates remained active. Probe traffic was marked
 | OpenCode Go / DeepSeek | 1,2,3,4,6,8,10,12,16 total | All completed; no 429s. |
 | OpenAI Codex / Sol | 1,2,3,4,6 total | 6 concurrent completed. An 8-child attempt had 6 complete and 2 denied by the router's local `codex-weekly` quota-debt floor, not a provider 429. |
 
-Installed caps: Antigravity 8 per account, OpenCode Go 8 total, OpenAI 4 total,
-global 16. Test mode was disabled afterward and the live service reports
-`concurrencyChecks: enabled` and `accountPinning: disabled`. These are local
-burst limits, not provider-published concurrency numbers; provider quotas and
-behavior can change.
+Installed caps: Antigravity 4 per account, OpenCode Go 4 total, OpenAI 4 total,
+global 8. Concurrency-only denials wait up to `queueTimeoutMs: 20000` with
+jitter, then fail; quota/identity/model/context denials do not wait. Test mode
+was disabled afterward and the live service reports `concurrencyChecks: enabled`
+and `accountPinning: disabled`. These are local burst limits, not
+provider-published concurrency numbers; provider quotas and behavior can change.
+
+The startup/5-minute maintenance loop was verified live: its first run found an
+uncertain execution, confirmed the native child was idle, and automatically
+reconciled it. The loop does not clear quota debt. Manual
+`recover <executionID> --confirm-provider-idle` remains available for immediate
+operator action before the idle threshold.
 
 Antigravity's official documentation states that accessing it through
 third-party software violates its Terms of Service. The provider remains an
@@ -133,7 +140,7 @@ remain only in workflow task rows and are redacted from default reads/exports. N
 Observatory workflow contract, remote export, hosted dashboard deployment or
 prompt/response capture was added.
 
-The router suite now has **202 passing tests**. New coverage includes annotation
+The router suite now has **205 passing tests**. New coverage includes annotation
 ownership and acyclic session-scoped relations, null-vs-zero usage, redaction and
 Mermaid/HTML injection, post-commit trace-failure isolation from quota gates,
 additive SQLite reopen compatibility, deletion cascades, capacity markers,
@@ -189,9 +196,11 @@ subsequently edited agent/MCP definitions. See the README for the command.
    context-scaled percentage points, not exact provider token capacity. Independent
    quota windows are checked separately, but external clients and primaries can
    still consume the same accounts outside this router's control.
-3. **Ambiguous recovery is explicit, not automatic.** An uncertain request can
-   retain debt/capacity until operator confirmation and authoritative reconciliation.
-   Reconciliation never invents measured token counts or silently repeats work.
+3. **Ambiguous quota recovery remains conservative.** A startup/5-minute reaper
+   can release an idle child's concurrency slot automatically, but uncertain quota
+   debt remains until an authoritative observation. Reconciliation never invents
+   measured token counts or silently repeats work. Manual `recover` remains for
+   immediate operator action.
 4. **No empirical quality optimizer.** Selection follows the agreed tier/role
    policy and eligibility constraints. Measured throughput/reliability is diagnostic;
    short smoke tests do not establish a meaningful performance ranking.
@@ -206,9 +215,10 @@ subsequently edited agent/MCP definitions. See the README for the command.
    rejects missing raw counters rather than trusting normalized 100% displays.
 8. **Reload while idle where possible.** Successful captured native tool snapshots
    survive plugin reload as required by V2; initialization failures retain a deny
-   gate. Native background events are durable, but automatic recovery for every
-   interrupted or missed-lifecycle case is not implemented. `recover` verifies
-   the native child idle before finishing/reconciling a stale running execution.
+   gate. Native background events are durable. The idle reaper covers stale local
+   executions, but it is not a distributed lease service and cannot coordinate
+   other machines. `recover` verifies the native child idle before immediate
+   finishing/reconciling.
 
 ## Source and version-control handoff
 

@@ -31,6 +31,7 @@ for (const [from, name] of [[configPath, "opencode.jsonc"], [config.policyFile, 
 
 rawPolicy.steps ??= { default: 30, extended: 60 }
 rawPolicy.maxRequestsPerExecution ??= 100
+rawPolicy.queueTimeoutMs ??= 20_000
 rawPolicy.quota ??= {}
 rawPolicy.quota.maxConcurrentTotal ??= 16
 delete rawPolicy.maxSteps

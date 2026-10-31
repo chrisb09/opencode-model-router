@@ -28,13 +28,14 @@
   "outputTokens": { "LOW": 4096, "DEFAULT": 8192, "HARD": 16384, "EXCEPTIONAL": 16384 },
   "steps": { "default": 30, "extended": 60 },
   "maxRequestsPerExecution": 100,
+  "queueTimeoutMs": 20000,
   "quota": {
     "maxAgeMs": 900000,
     "hardReservePp": 2,
     "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25 },
     "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2 },
-    "maxConcurrentPerAccount": { "antigravity": 8, "opencode-go": 8, "openai": 4 },
-    "maxConcurrentTotal": 16
+    "maxConcurrentPerAccount": { "antigravity": 4, "opencode-go": 4, "openai": 4 },
+    "maxConcurrentTotal": 8
   },
   "allowPaid": false,
   "allowKimi": false,

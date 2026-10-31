@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { Ledger } from "../src/ledger.ts"
-import { Router } from "../src/router.ts"
+import { NoEligibleModelError, Router } from "../src/router.ts"
 import { defaultPolicy } from "../src/config.ts"
 import { task, models, accounts, now } from "./fixtures.ts"
 
@@ -59,7 +59,18 @@ describe("atomic reservation ledger", () => {
     const { l, r, a, m, p } = fixture(); p.quota.maxConcurrentTotal = 1
     const e = r.reserve("one", task(), m, a); l.bind(e.id, "ses_child", now)
     expect(l.totalConcurrency()).toBe(1)
-    expect(() => r.reserve("two", task(), m, a)).toThrow("Concurrent total capacity reached")
+    try { r.reserve("two", task(), m, a) }
+    catch (error) {
+      expect(error).toBeInstanceOf(NoEligibleModelError)
+      expect((error as NoEligibleModelError).concurrencyOnly).toBe(true)
+    }
+  })
+  test("stale execution query excludes terminal work and respects the age threshold", () => {
+    const { l, r, a, m } = fixture(); const e = r.reserve("one", task(), m, a); l.bind(e.id, "ses_child", now)
+    expect(l.stale(now)).toHaveLength(0)
+    expect(l.stale(now + 1).map(x => x.id)).toEqual([e.id])
+    l.finish(e.id, "completed", now + 2)
+    expect(l.stale(now + 3)).toHaveLength(0)
   })
   test("request backstop is enforced", () => {
     const { l, r, a, m, p } = fixture(); p.maxRequestsPerExecution = 1

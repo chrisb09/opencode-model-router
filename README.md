@@ -169,9 +169,11 @@ merely to make a denial disappear.
 Policy configuration includes:
 
 - Model aliases and ordered role/tier candidates/fallbacks.
-- Output budgets, native step buckets and a high request backstop.
+- Output budgets, native step buckets, a high request backstop and a bounded
+  concurrency wait.
 - Maximum quota age, hard reserve and soft conservation floors.
 - Estimated percentage-point usage, per-account concurrency and a global cap.
+- Idle-execution maintenance interval and operator recovery.
 - Critic family preferences.
 
 Soft floors can be relaxed to the hard floor for critical work. A user tier
@@ -207,12 +209,19 @@ Concurrency was measured locally with tiny and read-only tool-loop probes:
 
 | Provider | Measured clean concurrency | Policy cap |
 |---|---:|---:|
-| Antigravity | 16 per account (one account; 8 on two others) | 8 per account |
-| OpenCode Go / DeepSeek | 16 total | 8 total |
+| Antigravity | 16 per account (one account; 8 on two others) | 4 per account |
+| OpenCode Go / DeepSeek | 16 total | 4 total |
 | OpenAI Codex / Sol | 6 total | 4 total |
 
-The global cap is 16. These are local admission limits, not provider-published
+The global cap is 8. These are local admission limits, not provider-published
 concurrency numbers; the providers meter quota windows and may throttle bursts.
+
+When the only rejection is concurrency, `/reserve` waits up to
+`queueTimeoutMs` (20 seconds) with jittered polling, then returns the denial.
+Quota, identity, context and model errors are never queued. A maintenance loop
+runs on startup and every five minutes, and automatically finishes/reconciles
+executions whose native child is idle. It never clears quota debt; reconciliation
+still requires a fresh authoritative quota observation.
 The test probe is available for remeasurement:
 
 ```sh
@@ -258,8 +267,9 @@ Successful transport retains conservative debt until a newer authoritative quota
 observation can reflect it; actual token counts remain **null** when unavailable.
 Aborted/ambiguous requests retain uncertainty and may retain capacity indefinitely;
 time passing alone is not proof that an upstream request stopped or was free.
-Do not clear reservations merely to get past a denial. Automatic ambiguous
-recovery is not implemented. Explicit operator recovery is available:
+Do not clear reservations merely to get past a denial. The local service reaps
+idle orphaned executions on startup and every five minutes. For immediate
+operator action, explicit recovery is available:
 
 ```sh
 # A running/reserved execution whose native child is idle:

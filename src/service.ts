@@ -5,14 +5,14 @@ import { assertLocalUrl } from "./config.ts"
 import { normalize, QuotaSource, type Binding } from "./collector.ts"
 import { catalogSchema, taskSchema, bindingSchema, usageSchema } from "./schemas.ts"
 import { Ledger } from "./ledger.ts"
-import { Router } from "./router.ts"
+import { NoEligibleModelError, Router } from "./router.ts"
 import { measuredStream, UsageParser } from "./stream.ts"
 import { decodeBody } from "./encoding.ts"
 import { capOutput } from "./output-limit.ts"
 import { verifyNativeCredential } from "./identity.ts"
 import { OpenCode } from "@opencode/client"
 import { Service } from "@opencode/client/service"
-import type { Account, CatalogModel, Policy } from "./types.ts"
+import type { Account, CatalogModel, Execution, Policy } from "./types.ts"
 import { WorkflowStore, annotationSchema, delegationTraceSchema, primaryTraceSchema, workflowID } from "./workflow.ts"
 import { workflowMermaid, workflowSummary } from "./workflow-export.ts"
 
@@ -25,7 +25,9 @@ export class RouterService {
   readonly router: Router
   readonly source: QuotaSource
   readonly workflow: WorkflowStore | null
+  readonly maintenance = { lastRunAt: null as number | null, lastError: null as string | null, recovered: 0, cancelled: 0, skipped: 0 }
   private workflowFailures = 0
+  private reaping = false
   constructor(readonly config: Settings, readonly policy: Policy, readonly ledger: Ledger, readonly token: string, fetcher: typeof fetch = fetch, readonly upstreamFetch: typeof fetch = fetch) {
     this.router = new Router(policy, ledger, Date.now, config.testMode === true); this.source = new QuotaSource(config, fetcher)
     try { this.workflow = new WorkflowStore(ledger.db, config.workflow?.captureLabels !== false) }
@@ -59,6 +61,58 @@ export class RouterService {
     if (needsRefresh && !refresh) { snapshot = await this.source.get(true); accounts = normalize(snapshot, bindings) }
     return accounts
   }
+  /**
+   * Reap executions that have outlived their local state change and whose native
+   * child is no longer active. Capacity is released; quota debt is not invented
+   * or cleared, and reconciliation still requires a fresh authoritative snapshot.
+   */
+  async reapStale(olderThanMs = 5 * 60_000) {
+    if (this.reaping) return this.maintenance
+    this.reaping = true
+    this.maintenance.lastRunAt = Date.now()
+    this.maintenance.lastError = null
+    this.maintenance.recovered = 0
+    this.maintenance.cancelled = 0
+    this.maintenance.skipped = 0
+    try {
+      const stale = this.ledger.stale(Date.now() - Math.max(0, olderThanMs))
+      if (!stale.length) return this.maintenance
+      const endpoint = await Service.discover()
+      if (!endpoint) throw new Error("Cannot verify native children are idle")
+      const opencode = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
+      const active = await opencode.session.active()
+      for (const execution of stale) {
+        try {
+          if (execution.childSessionID && active[execution.childSessionID]) { this.maintenance.skipped++; continue }
+          const terminatedAt = execution.updatedAt
+          if (["reserved", "running"].includes(execution.state)) {
+            const finished = this.ledger.finish(execution.id, execution.childSessionID ? "failed" : "cancelled", Date.now())
+            this.trace(s => s.execution(finished))
+            if (!execution.childSessionID) { this.maintenance.cancelled++; continue }
+          }
+          let registry: Registry
+          try { registry = this.registry(execution.task.directory) }
+          catch { registry = this.latestRegistry() }
+          const account = (await this.accounts(registry.bindings, true)).find(a => a.key === execution.candidate.account.key)
+          if (!account || account.windows.some(w => w.source !== "provider" || !Number.isFinite(w.checkedAt) || w.checkedAt <= terminatedAt || w.checkedAt > Date.now())) {
+            this.maintenance.skipped++
+            continue
+          }
+          const reconciled = this.ledger.reconcile(execution.id, Date.now(), true)
+          this.trace(s => s.execution(reconciled))
+          this.maintenance.recovered++
+        } catch {
+          this.maintenance.skipped++
+        }
+      }
+    } catch (error) {
+      this.maintenance.lastError = error instanceof Error ? error.message : "Maintenance failed"
+    } finally {
+      this.reaping = false
+    }
+    return this.maintenance
+  }
+
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname
     if (!secureEqual(request.headers.get("x-router-token") ?? "", this.token)) return json({ error: "Unauthorized" }, 401)
@@ -72,11 +126,12 @@ export class RouterService {
         let accounts: Account[] = []
         try { accounts = await this.accounts(uniqueBindings) } catch {}
         return json({ enabled: this.config.enabled, testMode: this.config.testMode === true, quotaSource: this.config.collectorUrl, quotaError: this.source.lastError,
-          policy: { aliases: this.policy.aliases, roles: this.policy.roles, steps: this.policy.steps, maxRequestsPerExecution: this.policy.maxRequestsPerExecution, quota: this.policy.quota },
+          policy: { aliases: this.policy.aliases, roles: this.policy.roles, steps: this.policy.steps, maxRequestsPerExecution: this.policy.maxRequestsPerExecution, queueTimeoutMs: this.policy.queueTimeoutMs, quota: this.policy.quota },
           accounts: accounts.map(a => ({ ...a, windows: a.windows.map(w => ({ ...w, ageMs: Date.now() - w.checkedAt, stale: Date.now() - w.checkedAt > this.policy.quota.maxAgeMs, locallyReservedPp: this.ledger.pressure(a.key, w.key, w.checkedAt) })) })),
           models: [...new Map(registries.flatMap(r => r.models).map(m => [`${m.providerID}/${m.id}`, m])).values()],
           locations: registries.map(r => ({ directory: r.directory, updatedAt: r.updatedAt, models: r.models.map(m => `${m.providerID}/${m.id}`) })),
           workflow: { enabled: this.config.workflow?.enabled !== false, available: this.workflow !== null, localOnly: true, defaultExportIncludesText: false, captureFailures: this.workflowFailures },
+          maintenance: this.maintenance,
           safeguards: { paidDispatch: "locked", kimiDispatch: "locked", quotaAccounting: "estimated percentage reservations", concurrencyChecks: this.config.testMode ? "disabled (test mode)" : "enabled", accountPinning: this.config.testMode ? "test-only" : "disabled", scope: "managed local subagents only", primaryModelSelection: "unchanged" }, ...this.ledger.status() })
       }
       if (path === "/proxy" && request.method === "POST") return await this.proxy(request)
@@ -131,7 +186,7 @@ export class RouterService {
       }
       if (path === "/recommend" || path === "/reserve") {
         if (!this.config.enabled) return json({ error: "Router disabled" }, 409)
-        const input = z.object({ id: idSchema.optional(), task: taskSchema, workflow: delegationTraceSchema.optional() }).strict().parse(body)
+        const input = z.object({ id: idSchema.optional(), task: taskSchema, workflow: delegationTraceSchema.optional(), waitMs: z.number().int().nonnegative().max(60_000).optional() }).strict().parse(body)
         if (input.task.accountKey && !this.config.testMode) throw new Error("Account pinning is only available in router test mode")
         if (input.task.test && !this.config.testMode) throw new Error("Test tasks are only allowed in router test mode")
         const registry = this.registry(input.task.directory)
@@ -143,13 +198,29 @@ export class RouterService {
         if (!recommendation.candidates.some(c => !c.rejected.length) && recommendation.candidates.some(c => c.rejected.some(r => r.startsWith("Quota reserve reached")))) accounts = await this.accounts(registry.bindings, true)
         if (path === "/recommend") return json(this.router.recommend(input.task, registry.models, accounts))
         if (!input.id) throw new Error("Dispatch ID required")
-        try {
-          const execution = this.router.reserve(input.id, input.task, registry.models, accounts)
-          this.trace(s => s.delegation(execution, input.workflow))
-          return json(execution)
-        } catch (error) {
-          if (!this.ledger.get(input.id)) this.trace(s => s.denial(input.id!, input.task))
-          throw error
+        const existing = this.ledger.get(input.id)
+        if (existing) return json(existing)
+        const deadline = Date.now() + Math.min(input.waitMs ?? this.policy.queueTimeoutMs, 60_000)
+        let firstAttempt = true
+        for (;;) {
+          if (request.signal.aborted) throw new Error("Request aborted while waiting for concurrency capacity")
+          try {
+            const execution = this.router.reserve(input.id, input.task, registry.models, accounts, { logDenial: firstAttempt || Date.now() >= deadline })
+            this.trace(s => s.delegation(execution, input.workflow))
+            return json(execution)
+          } catch (error) {
+            const retryable = error instanceof NoEligibleModelError && error.concurrencyOnly && Date.now() < deadline
+            if (!retryable) {
+              if (!this.ledger.get(input.id)) this.trace(s => s.denial(input.id!, input.task))
+              throw error
+            }
+            if (firstAttempt) {
+              this.ledger.log(input.id, "queued", { waitMs: Math.max(0, deadline - Date.now()), reasons: error.reasons }, Date.now())
+              firstAttempt = false
+            }
+            if (request.signal.aborted) throw new Error("Request aborted while waiting for concurrency capacity")
+            await new Promise(resolve => setTimeout(resolve, 250 + Math.floor(Math.random() * 500)))
+          }
         }
       }
       if (path === "/bind") {
@@ -279,5 +350,10 @@ export class RouterService {
 
 export function serve(service: RouterService) {
   const url = assertLocalUrl(service.config.url)
-  return Bun.serve({ hostname: "127.0.0.1", port: Number(url.port || 80), idleTimeout: 255, maxRequestBodySize: 8_000_000, fetch: req => service.fetch(req) })
+  const server = Bun.serve({ hostname: "127.0.0.1", port: Number(url.port || 80), idleTimeout: 255, maxRequestBodySize: 8_000_000, fetch: req => service.fetch(req) })
+  const reaper = setInterval(() => { void service.reapStale() }, 5 * 60_000)
+  reaper.unref?.()
+  const initial = setTimeout(() => { void service.reapStale() }, 10_000)
+  initial.unref?.()
+  return server
 }

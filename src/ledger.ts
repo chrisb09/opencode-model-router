@@ -37,6 +37,12 @@ export class Ledger {
     const row = this.db.query<Row, [string]>("SELECT * FROM executions WHERE child_session_id=? ORDER BY created_at DESC LIMIT 1").get(id)
     return row ? this.decode(row) : null
   }
+  /** Active executions whose last local state change predates the idle threshold. */
+  stale(olderThan: number, limit = 50): Execution[] {
+    return this.db.query<Row, [number, number]>(`SELECT * FROM executions
+      WHERE state IN ('reserved','running','uncertain') AND updated_at < ?
+      ORDER BY updated_at ASC LIMIT ?`).all(olderThan, limit).map(row => this.decode(row))
+  }
   private decode(r: Row): Execution {
     return { id: r.id, childSessionID: r.child_session_id, state: r.state, task: JSON.parse(r.task), candidate: JSON.parse(r.candidate), createdAt: r.created_at, updatedAt: r.updated_at }
   }
@@ -87,13 +93,13 @@ export class Ledger {
     const changed = this.db.query("UPDATE requests SET state=?,ended_at=?,usage=? WHERE id=? AND state='reserved'").run(usage.status, now, JSON.stringify(usage), id).changes
     return changed > 0
   }
-  reconcile(id: string, now: number) {
+  reconcile(id: string, now: number, automatic = false) {
     return this.atomic(() => {
       const e = this.get(id)
       if (!e || !["uncertain", "failed", "cancelled"].includes(e.state)) throw new Error("Only a terminal/uncertain execution can be reconciled")
       this.db.query("UPDATE requests SET state='reconciled',ended_at=? WHERE execution_id=? AND state IN ('reserved','uncertain')").run(now, id)
       this.db.query("UPDATE executions SET state='reconciled',updated_at=? WHERE id=?").run(now, id)
-      this.log(id, "explicit-reconciliation", { confirmation: "provider-idle-confirmed", actualUsage: "not invented; existing measured/null values retained", note: "Estimated debt remains until a newer quota observation" }, now)
+      this.log(id, automatic ? "automatic-reconciliation" : "explicit-reconciliation", { confirmation: automatic ? "automatic-idle-timeout" : "provider-idle-confirmed", actualUsage: "not invented; existing measured/null values retained", note: "Estimated debt remains until a newer quota observation" }, now)
       return this.get(id)!
     })
   }

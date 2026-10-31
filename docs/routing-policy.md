@@ -40,11 +40,14 @@ concurrency numbers. Locally measured clean levels and installed caps:
 
 | Provider | Measured clean | Installed cap |
 |---|---:|---:|
-| Antigravity | 16 per account (one account; 8 on two others) | 8 per account |
-| OpenCode Go / DeepSeek | 16 total | 8 total |
+| Antigravity | 16 per account (one account; 8 on two others) | 4 per account |
+| OpenCode Go / DeepSeek | 16 total | 4 total |
 | OpenAI Codex / Sol | 6 total | 4 total |
 
-The global cap is 16. Providers meter quota windows and may throttle bursts;
+The global cap is 8. Concurrency-only denials wait up to 20 seconds and then
+fail; other denial classes do not queue. A startup/5-minute maintenance loop
+finishes and reconciles executions whose native child is idle, without clearing
+quota debt. Providers meter quota windows and may throttle bursts;
 these values must be remeasured after material provider changes. The
 `scripts/concurrency-probe.ts` tool runs only with temporary router `testMode`,
 which disables concurrency admission but keeps quota, cooldown, identity,

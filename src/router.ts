@@ -3,6 +3,14 @@ import type { Account, CatalogModel, Policy, Task, Usage } from "./types.ts"
 import { recommend } from "./policy.ts"
 import { Ledger } from "./ledger.ts"
 
+const concurrencyReasons = new Set(["Concurrent account capacity reserved", "Concurrent total capacity reached"])
+export class NoEligibleModelError extends Error {
+  constructor(readonly reasons: string[], readonly concurrencyOnly: boolean) {
+    super("No eligible model: " + reasons.join("; "))
+    this.name = "NoEligibleModelError"
+  }
+}
+
 export class Router {
   constructor(readonly policy: Policy, readonly ledger: Ledger, readonly clock = Date.now, readonly testMode = false) {}
   recommend(task: Task, models: CatalogModel[], accounts: Account[]) {
@@ -12,14 +20,15 @@ export class Router {
       (k, m) => this.ledger.cooldown(k, m),
       this.testMode ? () => 0 : () => this.ledger.totalConcurrency())
   }
-  reserve(id: string, task: Task, models: CatalogModel[], accounts: Account[]) {
+  reserve(id: string, task: Task, models: CatalogModel[], accounts: Account[], options: { logDenial?: boolean } = {}) {
     return this.ledger.atomic(() => {
       if (this.ledger.get(id)) throw new Error("Dispatch ID already exists; do not repeat a possibly executed task")
       const result = this.recommend(task, models, accounts)
       const selected = result.candidates.find(c => !c.rejected.length)
       if (!selected) {
-        this.ledger.log(id, "denied", { role: task.role, tier: task.tier, errors: result.errors, candidates: result.candidates.map(c => ({ model: c.model, account: c.account.key, reasons: c.rejected })) }, this.clock())
-        throw new Error("No eligible model: " + [...result.errors, ...new Set(result.candidates.flatMap(c => c.rejected))].join("; "))
+        const reasons = [...new Set([...result.errors, ...result.candidates.flatMap(c => c.rejected)])]
+        if (options.logDenial !== false) this.ledger.log(id, "denied", { role: task.role, tier: task.tier, errors: result.errors, candidates: result.candidates.map(c => ({ model: c.model, account: c.account.key, reasons: c.rejected })) }, this.clock())
+        throw new NoEligibleModelError(reasons, reasons.length > 0 && reasons.every(reason => concurrencyReasons.has(reason)))
       }
       return this.ledger.create(id, task, selected, this.clock())
     })

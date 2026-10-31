@@ -41,6 +41,7 @@ export async function loadPolicy(file?: string): Promise<Policy> {
     steps: z.object({ default: z.number().int().positive().max(100), extended: z.number().int().positive().max(100) }).strict()
       .refine(v => v.extended >= v.default, "Extended native step budget must be at least the default"),
     maxRequestsPerExecution: z.number().int().positive().max(500),
+    queueTimeoutMs: z.number().int().nonnegative().max(60_000),
     quota: z.object({ maxAgeMs: z.number().int().positive(), hardReservePp: nonnegative.max(100),
       softReservePp: z.record(z.string(), nonnegative.max(100)), estimatedRequestPp: z.record(z.string(), nonnegative.positive().max(100)),
       maxConcurrentPerAccount: z.record(z.string(), z.number().int().positive().max(64)),

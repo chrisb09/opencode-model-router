@@ -76,6 +76,8 @@ export interface Policy {
   steps: { default: number; extended: number }
   /** High runaway backstop; not a tier budget. Native steps normally stop first. */
   maxRequestsPerExecution: number
+  /** Bounded wait when the only rejection is local concurrency admission. */
+  queueTimeoutMs: number
   quota: {
     maxAgeMs: number
     hardReservePp: number

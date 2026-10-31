@@ -7,14 +7,14 @@ import { normalize, QuotaSource } from "../src/collector.ts"
 import { UsageParser, measuredStream } from "../src/stream.ts"
 import { models, bindings, snapshot, task, now } from "./fixtures.ts"
 import { agentDefinitions } from "../src/agents.ts"
-import { roles } from "../src/types.ts"
+import { roles, type Policy } from "../src/types.ts"
 
 const open: Ledger[] = []
 afterEach(() => open.splice(0).forEach(l => l.close()))
-export function serviceFixture(overrides: Record<string, unknown> = {}) {
+export function serviceFixture(overrides: Record<string, unknown> = {}, policy: Policy = defaultPolicy()) {
   const ledger = new Ledger(":memory:"); open.push(ledger)
   const config = { url: "http://127.0.0.1:7695", collectorUrl: "https://quota.example.com", enabled: true, ...overrides } as any
-  const service = new RouterService(config, defaultPolicy(), ledger, "test-token", (async () => Response.json(snapshot())) as unknown as typeof fetch)
+  const service = new RouterService(config, policy, ledger, "test-token", (async () => Response.json(snapshot())) as unknown as typeof fetch)
   const client = new RouterClient(config, "test-token", ((url: any, init: any) => service.fetch(new Request(url, init))) as typeof fetch)
   return { ledger, service, client }
 }
@@ -56,6 +56,27 @@ describe("private service API", () => {
     expect(status.safeguards.concurrencyChecks).toBe("disabled (test mode)")
     expect(status.safeguards.accountPinning).toBe("test-only")
     expect(service.router.testMode).toBe(true)
+  })
+  test("bounded wait queues only concurrency denials and succeeds when a slot frees", async () => {
+    const policy = defaultPolicy(); policy.queueTimeoutMs = 2000; policy.quota.maxConcurrentTotal = 1
+    const { client, ledger } = serviceFixture({}, policy)
+    await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
+    const first = await client.call("/reserve", { id: "one", task: task({ requestedModel: policy.aliases["gemini-high"] }) })
+    ledger.bind(first.id, "ses_one", Date.now())
+    const pending = client.call("/reserve", { id: "two", task: task({ requestedModel: policy.aliases["gemini-high"] }), waitMs: 2000 })
+    await Bun.sleep(100)
+    ledger.finish(first.id, "completed", Date.now())
+    const second = await pending
+    expect(second.id).toBe("two")
+    expect(second.state).toBe("reserved")
+  })
+  test("does not wait for non-concurrency denials", async () => {
+    const policy = defaultPolicy(); policy.queueTimeoutMs = 5000
+    const { client } = serviceFixture({}, policy)
+    await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
+    const started = Date.now()
+    await expect(client.call("/reserve", { id: "paid", task: task({ requestedModel: policy.aliases.opus }), waitMs: 5000 })).rejects.toThrow("No eligible")
+    expect(Date.now() - started).toBeLessThan(2000)
   })
   test("invalid schemas cannot authorize paid spending", async () => {
     const { client } = serviceFixture()
