@@ -34,7 +34,7 @@ describe("private service API", () => {
     const recommended = await client.call("/recommend", { task: task() })
     expect(recommended.candidates[0].rejected).toHaveLength(0)
     const e = await client.call("/reserve", { id: "test", task: task() })
-    expect(e.candidate.family).toBe("gemini")
+    expect(e.candidate.family).toBe("deepseek")
     expect((await client.call("/status")).safeguards.paidDispatch).toBe("locked")
   })
   test("test account pins and test tasks are rejected outside test mode", async () => {
@@ -47,8 +47,8 @@ describe("private service API", () => {
     const { client, service, ledger } = serviceFixture({ testMode: true })
     await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
     for (let i = 0; i < 5; i++) {
-      const e = await client.call("/reserve", { id: `pin_${i}`, task: task({ requestedModel: defaultPolicy().aliases["gemini-high"], accountKey: "google:a@example.com", test: true }) })
-      expect(e.candidate.account.key).toBe("google:a@example.com")
+      const e = await client.call("/reserve", { id: `pin_${i}`, task: task({ requestedModel: defaultPolicy().aliases["glm-flash"], accountKey: "mistral-code:default", test: true }) })
+      expect(e.candidate.account.key).toBe("mistral-code:default")
       ledger.bind(e.id, `ses_pin_${i}`, now)
     }
     const status = await client.call("/status")
@@ -61,9 +61,9 @@ describe("private service API", () => {
     const policy = defaultPolicy(); policy.queueTimeoutMs = 2000; policy.quota.maxConcurrentTotal = 1
     const { client, ledger } = serviceFixture({}, policy)
     await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
-    const first = await client.call("/reserve", { id: "one", task: task({ requestedModel: policy.aliases["gemini-high"] }) })
+    const first = await client.call("/reserve", { id: "one", task: task({ requestedModel: policy.aliases["glm-flash"] }) })
     ledger.bind(first.id, "ses_one", Date.now())
-    const pending = client.call("/reserve", { id: "two", task: task({ requestedModel: policy.aliases["gemini-high"] }), waitMs: 2000 })
+    const pending = client.call("/reserve", { id: "two", task: task({ requestedModel: policy.aliases["glm-flash"] }), waitMs: 2000 })
     await Bun.sleep(100)
     ledger.finish(first.id, "completed", Date.now())
     const second = await pending
@@ -105,6 +105,8 @@ describe("quota source normalization", () => {
     const a = normalize(snapshot(), bindings())
     expect(a.find(a => a.providerID === "opencode-go")!.windows).toHaveLength(3)
     expect(a.find(a => a.providerID === "antigravity")!.windows).toHaveLength(2)
+    expect(a.find(a => a.providerID === "mistral")!.windows).toHaveLength(1)
+    expect(a.find(a => a.providerID === "mistral")!.windows[0].durationMs).toBe(2592000000)
   })
   test("missing short window remains unknown", () => {
     const s = snapshot(); s.accounts[0].quotas = []

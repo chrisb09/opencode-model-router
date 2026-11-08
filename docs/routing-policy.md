@@ -1,30 +1,55 @@
 # Agreed subagent routing policy
 
-Agreed 2026-10-24. Plan and Build remain the only visible primary agents, with
+Agreed 2026-10-24; revised 2026-11-08 (Mistral onboarding, Gemini retirement,
+quota-pace groups). Plan and Build remain the only visible primary agents, with
 their model selected manually by the user. This policy routes delegated work only.
 
 | Subagent | Responsibility / access | LOW | DEFAULT | HARD | EXCEPTIONAL |
 |---|---|---|---|---|---|
-| explore | Local code exploration; read-only | Gemini medium | Gemini high | DeepSeek max | Sol medium |
-| research | External documentation and research; read-only | Gemini medium | Gemini high | DeepSeek max | Sol high |
-| general | Implementation and refactoring; controlled writes, Build only | Gemini high | DeepSeek max | Sol high | Opus 5.5* |
-| debugger | Root-cause investigation; read-only, approved diagnostics | Gemini high | DeepSeek max | Sol high | Opus 5.5* |
-| reviewer | Correctness, security, concurrency and performance; read-only | Gemini high | DeepSeek max | Sol high | Opus 5.5* |
-| architect | Design, algorithms, interfaces and tradeoffs; read-only | Gemini high | DeepSeek max | Sol high | Opus 5.5* |
-| critic | Challenge assumptions and conclusions; read-only | Independent Gemini/DeepSeek | Different model family | Independent Sol high/DeepSeek max | Independent Opus 5.5* |
+| explore | Local code exploration; read-only | GLM Flash low | [DeepSeek 1017 high \| Go DeepSeek max], GLM Flash high | DeepSeek 1017 max, GLM max | Sol medium, Kimi high |
+| research | External documentation and research; read-only | GLM Flash low | [DeepSeek 1017 high \| Go DeepSeek max], GLM Flash high | DeepSeek 1017 max, GLM max | Sol high, Kimi high |
+| general | Implementation and refactoring; controlled writes, Build only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| debugger | Root-cause investigation; read-only, approved diagnostics | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| reviewer | Correctness, security, concurrency and performance; read-only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| architect | Design, algorithms, interfaces and tradeoffs; read-only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| critic | Challenge assumptions and conclusions; read-only | GLM Flash, [DeepSeek group] | [DeepSeek group], Sol medium, GLM Flash, Kimi | Sol high, [DeepSeek group], Kimi | Opus 5.5*, Sol high, [DeepSeek group], Kimi |
 
-Gemini means `antigravity/antigravity-gemini-3.8-flash`.
-DeepSeek means `opencode-go/deepseek-v4.1-flash#max`.
+GLM Flash means `mistral/zai-glm-5-3-flash` (`low`/`high`); it is the only
+routed model with image/video/pdf input, so multimodal tasks fall to it when
+text-only models are rejected by the capability filter.
+DeepSeek 1017 means `mistral/deepseek-v4-1-flash-1017` (`high`/`max`).
+GLM max means `mistral/zai-glm-5-3#max` (strong knowledge synthesis; used for
+HARD exploration/research alternatives, not implementation).
+Go DeepSeek means `opencode-go/deepseek-v4.1-flash#max`.
 Sol means `openai/gpt-6.1-sol`, using only `medium` and `high` automatically.
-Opus means `oneprovider/claude-opus-5-5`, **without a reasoning variant**.
+Kimi means `opencode-go/kimi-k3.1-pro#high`. Opus means
+`oneprovider/claude-opus-5-5`, **without a reasoning variant**.
 
-* Opus requires explicit spending authorization and a hard budget. It is disabled
-  initially. No exhaustion-triggered paid fallback is permitted. Sol high can
-  handle exceptional tasks when suitable, with the fallback recorded explicitly.
+**Quota-pace groups.** A bracketed pair `[A | B]` shares one preference rank:
+the member whose account is furthest ahead of its quota-window progression wins.
+Pace is `available% / max((reset − now) / windowDuration, 0.1)`, the minimum
+across an account's windows, capped so policy rank always dominates. Windows
+without a published duration fall back to raw availability. Pace only decides
+*preference* between healthy candidates; hard/soft reserve floors and estimated
+request reservations remain absolute. This prefers quota that would otherwise
+be forfeited at a monthly reset (e.g. Mistral at 95% with days left over Go at
+45% of a fresh window) and reverses automatically as windows progress.
 
-Kimi `opencode-go/kimi-k3.1-pro` is authorization-only, outside routine escalation.
-VNAI Pro is excluded from automatic routing. DeepSeek Pro, Sonnet 4.6, Opus 4.6,
-and Sol xhigh/max are excluded. Unknown quota is not unlimited.
+Gemini 3.8 Flash (`antigravity`) is retired from routing as of 2026-11-08; the
+antigravity provider plumbing remains in place but dormant. GLM-5.3 max is the
+operator's primary model, so critic independence excludes the GLM family after
+GLM origins. Mistral Large 4 was evaluated and excluded (weakest AA profile of
+the candidates). VNAI Pro remains excluded from automatic routing; DeepSeek Pro,
+Sonnet 4.6, Opus 4.6 and Sol xhigh/max remain excluded. Unknown quota is not
+unlimited.
+
+* Opus is paid per-request and gated by `allowPaid` with `maxTaskUsd` /
+  `totalBudgetUsd` ceilings. It is disabled in the default policy; the live
+  installation enables it with explicit operator approval. No
+  exhaustion-triggered paid fallback is permitted. Sol high can handle
+  exceptional tasks when suitable, with the fallback recorded explicitly.
+
+Kimi is gated by `allowKimi` in the same way (enabled in the live installation).
 
 ## Native steps and concurrency
 
@@ -36,13 +61,15 @@ The router keeps a 100-request runaway backstop, not a tier-based 10/20/30 cap.
 A continuation keeps the child's step variant; use a new child to change it.
 
 Concurrency caps are local burst admission limits, not provider-published
-concurrency numbers. Locally measured clean levels and installed caps:
+concurrency numbers. Installed caps:
 
-| Provider | Measured clean | Installed cap |
-|---|---:|---:|
-| Antigravity | 16 per account (one account; 8 on two others) | 4 per account |
-| OpenCode Go / DeepSeek | 16 total | 4 total |
-| OpenAI Codex / Sol | 6 total | 4 total |
+| Provider | Installed cap |
+|---|---:|
+| Antigravity (dormant) | 4 per account |
+| OpenCode Go / DeepSeek | 4 total |
+| OpenAI Codex / Sol | 4 total |
+| Mistral Code | 4 per account |
+| OneProvider (paid) | 2 per account |
 
 The global cap is 8. Concurrency-only denials wait up to 20 seconds and then
 fail; other denial classes do not queue. A startup/5-minute maintenance loop
@@ -63,6 +90,8 @@ not be left enabled. Probe tasks are excluded from ordinary performance stats.
 | Sol | DeepSeek |
 | Kimi | Sol |
 | Opus | Sol |
+| GLM | DeepSeek |
+| Mistral | Sol |
 
 Independence is model-family independence, not merely a different provider or
 reasoning variant. A critic must receive the original model provenance and enough
@@ -77,6 +106,9 @@ report that limitation instead of silently claiming independent verification.
 - Preserve a running child's model; escalate through a new child and handoff.
 - No subagent recursion by default.
 - Plan never dispatches the write-capable general agent.
-- Title generation uses Gemini medium; compaction inherits the session model.
+- Title generation uses GLM Flash low; compaction inherits the session model.
 - Account, quota, context, capability and spending checks precede dispatch.
 - Do not automatically replay tasks with possible partial writes after failures.
+- Custom AI SDK transports for native subscription providers (openai,
+  opencode-go, mistral) are rejected before dispatch; native providers use the
+  HTTP proxy boundary with verified credential fingerprints.

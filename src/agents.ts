@@ -24,7 +24,11 @@ export function agentDefinitions(policy: Policy): Record<string, any> {
   const agents: Record<string, any> = {}
   for (const [id, prompt] of Object.entries(prompts)) {
     const role = id as Role
-    const base = { ...prompt, mode: "subagent", steps: policy.steps.default, model: policy.aliases[policy.roles[role].DEFAULT[0]], permissions: permissionsFor(role) }
+    // The static fallback model is the first DEFAULT preference; same-rank
+    // groups resolve to their first member.
+    const first = policy.roles[role].DEFAULT[0]
+    const firstAlias = Array.isArray(first) ? first[0] : first
+    const base = { ...prompt, mode: "subagent", steps: policy.steps.default, model: policy.aliases[firstAlias], permissions: permissionsFor(role) }
     agents[id] = base
     // Hidden internal variant used only when the coordinator requests a larger
     // native step budget. It keeps OpenCode's own graceful final-step behavior.
@@ -34,7 +38,7 @@ export function agentDefinitions(policy: Policy): Record<string, any> {
     ...["observatory_usage", "observatory_list_accounts", "observatory_list_machines", "observatory_list_sessions", "observatory_request_attempts", "observatory_tool_executions"].map(a => rule(a, "allow")),
     rule("subagent", "deny"), ...managedIDs.filter(id => id !== "general").flatMap(id => [rule("subagent", "allow", id), rule("subagent", "allow", extendedID(id))]), rule("shell", "deny")] }
   agents.build = { permissions: [rule("subagent", "deny"), ...managedIDs.flatMap(id => [rule("subagent", "allow", id), rule("subagent", "allow", extendedID(id))]), rule("workflow_annotate", "allow")] }
-  agents.title = { model: policy.aliases["gemini-medium"] }
+  agents.title = { model: policy.aliases["glm-flash-low"] }
   return agents
 }
 export const coordinatorInstructions = `Quota-aware delegation is automatic through the normal subagent tool. Keep Plan and Build as coordinators. Routine delegation within the user's requested task is authorized; do not wait for a separate request to use agents.

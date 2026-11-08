@@ -12,6 +12,7 @@ export function normalize(snapshot: CollectorSnapshot, bindings: Binding[]): Acc
     const keys = binding.providerID === "antigravity" ? ["gemini-5h", "gemini-weekly"]
       : binding.providerID === "openai" ? ["codex-5h", "codex-weekly"]
       : binding.providerID === "opencode-go" ? ["opencode-go-5h", "opencode-go-weekly", "opencode-go-monthly"]
+      : binding.providerID === "mistral" ? ["mistral-code"]
       : ["oneprovider"]
     const windows: QuotaWindow[] = keys.map(key => {
       const q = account?.quotas?.find((q: any) => q.key === key)
@@ -22,6 +23,7 @@ export function normalize(snapshot: CollectorSnapshot, bindings: Binding[]): Acc
       if (binding.providerID === "opencode-go" && !(typeof q?.raw?.usedMicroCents === "number" && typeof q?.raw?.limitMicroCents === "number" && q.raw.limitMicroCents > 0)) remainingPct = null
       if (binding.providerID === "openai" && typeof q?.raw?.usedPercent !== "number") remainingPct = null
       return { key, remainingPct, checkedAt, source: remainingPct === null ? "unknown" : "provider", resetAt: typeof q?.resetAt === "string" && Number.isFinite(Date.parse(q.resetAt)) ? q.resetAt : null,
+        ...(typeof q?.windowSec === "number" && Number.isFinite(q.windowSec) && q.windowSec > 0 ? { durationMs: q.windowSec * 1000 } : {}),
         ...(typeof q?.raw?.balanceUsd === "number" ? { balanceUsd: q.raw.balanceUsd } : {}),
         ...(typeof q?.raw?.expiresAt === "string" ? { expiresAt: q.raw.expiresAt } : {}),
         ...(typeof q?.raw?.limitMicroCents === "number" ? { limitUnits: q.raw.limitMicroCents, availableUnits: q.raw.limitMicroCents - q.raw.usedMicroCents } : {}),

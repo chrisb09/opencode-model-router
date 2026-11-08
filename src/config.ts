@@ -33,10 +33,13 @@ export async function loadPolicy(file?: string): Promise<Policy> {
   // safeguards. Role/tier arrays are validated when expanding candidates too.
   const nonnegative = z.number().finite().nonnegative()
   const tierMap = <T extends z.ZodTypeAny>(v: T) => z.object({ LOW: v, DEFAULT: v, HARD: v, EXCEPTIONAL: v }).strict()
-  const roleMap = Object.fromEntries(["explore", "research", "general", "debugger", "reviewer", "architect", "critic"].map(r => [r, tierMap(z.array(z.string().min(1)).min(1))]))
+  const preference = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+  // The critic-family bonus (100_000) must dominate any rank penalty (1_000 per
+  // rank); bounding the list keeps that invariant for custom policies.
+  const roleMap = Object.fromEntries(["explore", "research", "general", "debugger", "reviewer", "architect", "critic"].map(r => [r, tierMap(z.array(preference).min(1).max(64))]))
   return z.object({
     version: z.literal(1), aliases: z.record(z.string(), z.string().min(1)), roles: z.object(roleMap).strict(),
-    fallbacks: tierMap(z.array(z.string())), criticPreferences: z.record(z.string(), z.enum(["gemini", "deepseek", "sol", "kimi", "opus", "unknown"])),
+    fallbacks: tierMap(z.array(preference).max(64)), criticPreferences: z.record(z.string(), z.enum(["gemini", "deepseek", "sol", "kimi", "opus", "glm", "mistral", "unknown"])),
     outputTokens: tierMap(z.number().int().positive()),
     steps: z.object({ default: z.number().int().positive().max(100), extended: z.number().int().positive().max(100) }).strict()
       .refine(v => v.extended >= v.default, "Extended native step budget must be at least the default"),

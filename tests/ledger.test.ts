@@ -20,10 +20,10 @@ describe("atomic reservation ledger", () => {
     expect(l.concurrency(e.candidate.account.key)).toBe(0)
   })
   test("parallel requests cannot reserve the same last slot", async () => {
-    const { r, a, m, p } = fixture(); p.quota.maxConcurrentPerAccount.antigravity = 1
-    const result = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => Promise.resolve().then(() => r.reserve("parallel-" + i, task({ requestedModel: p.aliases["gemini-high"] }), m, a))))
-    expect(result.filter(x => x.status === "fulfilled")).toHaveLength(2)
-    expect(result.filter(x => x.status === "rejected")).toHaveLength(3)
+    const { r, a, m, p } = fixture(); p.quota.maxConcurrentPerAccount.mistral = 1
+    const result = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => Promise.resolve().then(() => r.reserve("parallel-" + i, task({ requestedModel: p.aliases["glm-flash"] }), m, a))))
+    expect(result.filter(x => x.status === "fulfilled")).toHaveLength(1)
+    expect(result.filter(x => x.status === "rejected")).toHaveLength(4)
   })
   test("duplicate dispatch IDs cannot replay possibly written work", () => {
     const { r, m, a } = fixture(); r.reserve("one", task(), m, a)

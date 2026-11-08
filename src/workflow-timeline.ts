@@ -36,7 +36,7 @@ const contributionLabel = (value: string): string => value.replaceAll("_", " ")
 
 const COLORS: Record<string, string> = {
   gemini: "#2d7f86", deepseek: "#6b5bd2", sol: "#b66a1e", opus: "#9b5d3e",
-  kimi: "#327a45", unknown: "#626b7a",
+  kimi: "#327a45", glm: "#8a4f7d", mistral: "#c76a21", unknown: "#626b7a",
 }
 const family = (model: string | null): string => {
   const lower = (model ?? "").toLowerCase()
@@ -45,6 +45,8 @@ const family = (model: string | null): string => {
   if (lower.includes("sol")) return "sol"
   if (lower.includes("opus")) return "opus"
   if (lower.includes("kimi")) return "kimi"
+  if (lower.includes("glm")) return "glm"
+  if (lower.includes("mistral")) return "mistral"
   return "unknown"
 }
 const modelColor = (model: string | null): string => COLORS[family(model)]!
@@ -247,7 +249,7 @@ export function workflowTimelineHTML(snapshot: WorkflowSnapshot): string {
 <div class="card"><div class="k">Unassessed</div><div class="v">${summary.tasks.byContribution.unassessed}</div><div class="s">${esc(contributionText)}</div></div>
 </section>
 <section class="panel">${workflowTimelineSVG(snapshot)}</section>
-<div class="legend"><span><i style="background:${COLORS.gemini}"></i>Gemini</span><span><i style="background:${COLORS.deepseek}"></i>DeepSeek</span><span><i style="background:${COLORS.sol}"></i>Sol</span><span><i style="background:${COLORS.opus}"></i>Opus</span><span><i style="background:${COLORS.kimi}"></i>Kimi</span><span><i style="background:${COLORS.unknown}"></i>Unknown</span><span>Dashed border = running / incomplete</span><span>Red border = failed / denied</span></div>
+<div class="legend"><span><i style="background:${COLORS.gemini}"></i>Gemini</span><span><i style="background:${COLORS.deepseek}"></i>DeepSeek</span><span><i style="background:${COLORS.sol}"></i>Sol</span><span><i style="background:${COLORS.opus}"></i>Opus</span><span><i style="background:${COLORS.kimi}"></i>Kimi</span><span><i style="background:${COLORS.glm}"></i>GLM</span><span><i style="background:${COLORS.mistral}"></i>Mistral</span><span><i style="background:${COLORS.unknown}"></i>Unknown</span><span>Dashed border = running / incomplete</span><span>Red border = failed / denied</span></div>
 <h2>Span details</h2>
 <section class="panel"><table class="table"><thead><tr><th>Kind</th><th>Agent</th><th>Model</th><th>Purpose</th><th>UTC range</th><th>Duration</th><th>Request usage</th><th>Contribution</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No spans recorded.</td></tr>`}</tbody></table></section>
 <p class="foot">Primary token usage and cost are not claimed. “Duration” measures observed elapsed time, not effort or value. Labels are omitted unless this export was explicitly requested with local text; notes are never rendered. This file loads no scripts, fonts or remote resources.</p>

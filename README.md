@@ -209,9 +209,10 @@ Concurrency was measured locally with tiny and read-only tool-loop probes:
 
 | Provider | Measured clean concurrency | Policy cap |
 |---|---:|---:|
-| Antigravity | 16 per account (one account; 8 on two others) | 4 per account |
+| Antigravity (dormant) | 16 per account (one account; 8 on two others) | 4 per account |
 | OpenCode Go / DeepSeek | 16 total | 4 total |
 | OpenAI Codex / Sol | 6 total | 4 total |
+| Mistral Code | not yet measured | 4 per account |
 
 The global cap is 8. These are local admission limits, not provider-published
 concurrency numbers; the providers meter quota windows and may throttle bursts.
@@ -238,16 +239,18 @@ performance statistics.
 
 ## Paid models and accounting limitations
 
-**Paid Opus and Kimi dispatch are locked in this release**, even if policy budget
-booleans are changed. No live paid-model tests were authorized or executed.
-The policy keeps their desired assignments for future work, but a boolean or an
-LLM-supplied argument is not spending authorization.
+**Paid Opus and Kimi dispatch are policy-gated, not unconditionally locked.** The
+default (committed) policy keeps them disabled; the live installation enables
+them through the explicit operator-approved booleans `allowPaid`/`allowKimi`
+with `maxTaskUsd`/`totalBudgetUsd` ceilings. A boolean is not itself spending
+authorization for new spending — enabling it is an explicit operator action,
+and the ceilings are enforced per task and in total.
 
-Enabling them needs a trusted approval/grant mechanism, monetary reservations
-against per-task/total ceilings, verified prices and enforcement before **every
-physical billable attempt**, including SDK/provider retries. Benchmark task-cost
-estimates and a task-level token estimate cannot supply that guarantee. VNAI is
-not registered for automatic routing.
+Enabling paid dispatch on a fresh installation still deserves care: monetary
+reservations against per-task/total ceilings, verified prices and enforcement
+before **every physical billable attempt**, including SDK/provider retries.
+Benchmark task-cost estimates and a task-level token estimate cannot supply
+that guarantee. VNAI is not registered for automatic routing.
 
 Subscription reservation quantities are explicitly **estimated percentage
 points**, not exact provider token capacity. Go raw meter units are exposed when

@@ -18,6 +18,10 @@ export function credentialFingerprint(provider: string, value: { type: string; a
     if (value.type !== "key" || !value.key) throw new Error("Go routing requires its bound inference credential")
     return digest(provider, value.key, secret)
   }
+  if (provider === "mistral") {
+    if (value.type !== "key" || !value.key) throw new Error("Mistral routing requires its bound API key")
+    return digest(provider, value.key, secret)
+  }
   return undefined
 }
 export function goAuthorizationFingerprint(access: string, secret: string) { return digest("opencode-go", "authorization:" + access, secret) }

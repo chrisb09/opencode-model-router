@@ -14,8 +14,9 @@ try {
     const config = await settings()
     await mkdir(paths().state, { recursive: true, mode: 0o700 }); await chmod(paths().state, 0o700)
     const ledger = new Ledger(paths().database); await chmod(paths().database, 0o600)
-    const server = serve(new RouterService(config, await loadPolicy(config.policyFile), ledger, client.token))
-    console.log(`OpenCode model router listening at ${server.url.origin}; paid and Kimi dispatch locked`)
+    const p = await loadPolicy(config.policyFile)
+    const server = serve(new RouterService(config, p, ledger, client.token))
+    console.log(`OpenCode model router listening at ${server.url.origin}; paid dispatch ${p.allowPaid ? "enabled" : "locked"}, Kimi dispatch ${p.allowKimi ? "enabled" : "locked"}`)
     const close = () => { server.stop(true); ledger.close(); process.exit(0) }
     process.on("SIGTERM", close); process.on("SIGINT", close)
   } else if (command === "status") console.log(JSON.stringify(await client.call("/status"), null, 2))

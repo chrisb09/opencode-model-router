@@ -115,7 +115,7 @@ describe("native subagent dispatch integration", () => {
   })
   test("Go uses its actual Console integration instead of assuming the provider ID is the credential integration", async () => {
     const f = await fixture(true)
-    const result = await f.invoke({ agent: "general" })
+    const result = await f.invoke({ agent: "general", model: defaultPolicy().aliases.deepseek })
     const execution = f.ledger.forChild(result.metadata.sessionID)!
     expect(execution.candidate.ref.providerID).toBe("opencode-go")
     expect(execution.candidate.account.credentialID).toBe("cred_console")
@@ -140,7 +140,7 @@ describe("native subagent dispatch integration", () => {
   test("concurrent tasks choose different models without changing the primary", async () => {
     const f = await fixture(); const before = structuredClone(f.parent.model)
     await Promise.all([f.invoke({ routing: { tier: "LOW" } }), f.invoke({ routing: { tier: "HARD" } })])
-    expect(new Set(f.calls.map(c => c.model))).toEqual(new Set([defaultPolicy().aliases["gemini-medium"], defaultPolicy().aliases.deepseek]))
+    expect(new Set(f.calls.map(c => c.model))).toEqual(new Set([defaultPolicy().aliases["glm-flash-low"], defaultPolicy().aliases["deepseek-1017"]]))
     expect(f.parent.model).toEqual(before)
   })
   test("Plan cannot dispatch the implementation role", async () => {
@@ -157,7 +157,7 @@ describe("native subagent dispatch integration", () => {
     const f = await fixture(); const result = await f.invoke({})
     const e = f.ledger.forChild(result.metadata.sessionID)!
     expect(e.state).toBe("completed"); expect(f.ledger.concurrency(e.candidate.account.key)).toBe(0)
-    expect(result.metadata.routing.model).toBe(defaultPolicy().aliases["gemini-high"])
+    expect(result.metadata.routing.model).toBe(defaultPolicy().aliases["deepseek-1017-high"])
   })
   test("background dispatch retains capacity and uses durable run sequence for completion", async () => {
     const f = await fixture(); const result = await f.invoke({ background: true })
@@ -180,8 +180,8 @@ describe("native subagent dispatch integration", () => {
   test("critic gets actual original session provenance", async () => {
     const f = await fixture(); const original = await f.invoke({ routing: { tier: "LOW" } })
     await f.invoke({ agent: "critic", routing: { originSessionID: original.metadata.sessionID } })
-    expect(f.calls[1].model).toBe(defaultPolicy().aliases.deepseek)
-    expect(f.calls[1].prompt).toContain(defaultPolicy().aliases["gemini-medium"])
+    expect(f.calls[1].model).toBe(defaultPolicy().aliases["deepseek-1017"])
+    expect(f.calls[1].prompt).toContain(defaultPolicy().aliases["glm-flash-low"])
   })
   test("native step budget selects the hidden extended agent and is recorded", async () => {
     const f = await fixture(); const result = await f.invoke({ routing: { steps: 45 } })

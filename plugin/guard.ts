@@ -17,7 +17,7 @@ export function guardLanguage(inner: LanguageModelV3, client: RouterClient, sele
     // Native subscription providers use the HTTP proxy, never both guards. A
     // custom AISDK override fails closed rather than double-reserving or escaping
     // the transport boundary; ordinary explicit primary calls remain untouched.
-    if (selected.providerID !== "antigravity") throw new Error("Routed custom AI SDK transport for a native provider is unsupported")
+    if (!["antigravity", "oneprovider"].includes(selected.providerID)) throw new Error("Routed custom AI SDK transport for a native provider is unsupported")
     const execution = await client.call<Execution>("/execution", { id })
     if (!execution || execution.state !== "running") throw new Error("Routed execution is not active")
     if (execution.candidate.ref.providerID !== selected.providerID || execution.candidate.ref.id !== selected.id || inner.modelId !== selected.modelID) throw new Error("AI SDK model object does not match the reserved model")

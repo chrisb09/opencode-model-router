@@ -69,7 +69,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
     })) as CatalogModel[]
     const integrations = (await ctx.integration.list()).data
     const bindings: Binding[] = []
-    for (const providerID of ["antigravity", "openai", "opencode-go", "oneprovider"]) {
+    for (const providerID of ["antigravity", "openai", "opencode-go", "oneprovider", "mistral"]) {
       try {
       // Console can supply Go through integration "opencode". Provider names
       // are not credential identities; follow the actual provider metadata.
@@ -81,7 +81,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
         let fingerprint: string | undefined
         let workspaceID: string | undefined
         let authorizationFingerprint: string | undefined
-        if (["openai", "opencode-go"].includes(providerID)) {
+        if (["openai", "opencode-go", "mistral"].includes(providerID)) {
           const credential = await ctx.integration.connection.resolve(c)
           if (!credential) continue
           try { fingerprint = credentialFingerprint(providerID, credential, client.token) } catch { continue }
@@ -91,7 +91,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
           }
         }
         bindings.push({ providerID, integrationID, credentialID: c.id, label: c.label, method: c.method, credentialFingerprint: fingerprint, workspaceID, authorizationFingerprint,
-          accountKey: providerID === "antigravity" ? `google:${c.label.toLowerCase()}` : providerID === "openai" ? "codex:default" : providerID === "oneprovider" ? "oneprovider:default" : "opencode-go:default" })
+          accountKey: providerID === "antigravity" ? `google:${c.label.toLowerCase()}` : providerID === "openai" ? "codex:default" : providerID === "oneprovider" ? "oneprovider:default" : providerID === "mistral" ? "mistral-code:default" : "opencode-go:default" })
       }
       } catch { /* An unavailable integration must not disable other eligible providers. */ }
     }
@@ -108,7 +108,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
     editor.update("subagent", tool => {
       const native = tool.execute
       tool.input = subagentInput
-      tool.description += "\nQuota-aware routing is enforced automatically. Optional routing metadata: tier, importance, inputTokens, outputTokens, steps, originSessionID and modalities. Native steps default to 30; steps >30 use an internal extended variant up to the configured maximum. Paid Opus and Kimi are locked. Use a new child for escalation."
+      tool.description += "\nQuota-aware routing is enforced automatically. Optional routing metadata: tier, importance, inputTokens, outputTokens, steps, originSessionID and modalities. Native steps default to 30; steps >30 use an internal extended variant up to the configured maximum. Paid Opus and Kimi dispatch only when the policy allows them. Use a new child for escalation."
       tool.execute = async (value, context) => {
         if (!initialized) throw new Tool.Error({ message: "Quota router is not initialized; delegation blocked" })
         const input = value as any
@@ -191,7 +191,7 @@ export async function setupRouter(ctx: Context, suppliedClient?: RouterClient, s
   })
   await ctx.session.hook("http.request", async event => {
     const execution = await executionFor(event.sessionID)
-    if (!execution || execution.state !== "running" || !["openai", "opencode-go"].includes(event.model.providerID)) return
+    if (!execution || execution.state !== "running" || !["openai", "opencode-go", "mistral"].includes(event.model.providerID)) return
     const headers = new Headers(event.request.headers)
     headers.set("x-router-token", client.token); headers.set("x-router-target", event.request.url)
     headers.set("x-router-execution", modelString(event.model) === execution.candidate.model ? execution.id : "model-change-denied")

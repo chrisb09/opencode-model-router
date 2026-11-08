@@ -1,8 +1,11 @@
 {
   "version": 1,
   "aliases": {
-    "gemini-medium": "antigravity/antigravity-gemini-3.8-flash#medium",
-    "gemini-high": "antigravity/antigravity-gemini-3.8-flash#high",
+    "glm-flash-low": "mistral/zai-glm-5-3-flash#low",
+    "glm-flash": "mistral/zai-glm-5-3-flash#high",
+    "deepseek-1017-high": "mistral/deepseek-v4-1-flash-1017#high",
+    "deepseek-1017": "mistral/deepseek-v4-1-flash-1017#max",
+    "glm": "mistral/zai-glm-5-3#max",
     "deepseek": "opencode-go/deepseek-v4.1-flash#max",
     "sol-medium": "openai/gpt-6.1-sol#medium",
     "sol-high": "openai/gpt-6.1-sol#high",
@@ -10,21 +13,64 @@
     "kimi": "opencode-go/kimi-k3.1-pro#high"
   },
   "roles": {
-    "explore": { "LOW": ["gemini-medium"], "DEFAULT": ["gemini-high"], "HARD": ["deepseek"], "EXCEPTIONAL": ["sol-medium"] },
-    "research": { "LOW": ["gemini-medium"], "DEFAULT": ["gemini-high"], "HARD": ["deepseek"], "EXCEPTIONAL": ["sol-high"] },
-    "general": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
-    "debugger": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
-    "reviewer": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
-    "architect": { "LOW": ["gemini-high"], "DEFAULT": ["deepseek"], "HARD": ["sol-high"], "EXCEPTIONAL": ["opus", "sol-high"] },
-    "critic": { "LOW": ["gemini-high", "deepseek"], "DEFAULT": ["deepseek", "sol-medium", "gemini-high"], "HARD": ["sol-high", "deepseek"], "EXCEPTIONAL": ["opus", "sol-high", "deepseek"] }
+    "explore": {
+      "LOW": ["glm-flash-low"],
+      "DEFAULT": [["deepseek-1017-high", "deepseek"], "glm-flash"],
+      "HARD": ["deepseek-1017", "glm"],
+      "EXCEPTIONAL": ["sol-medium", "kimi"]
+    },
+    "research": {
+      "LOW": ["glm-flash-low"],
+      "DEFAULT": [["deepseek-1017-high", "deepseek"], "glm-flash"],
+      "HARD": ["deepseek-1017", "glm"],
+      "EXCEPTIONAL": ["sol-high", "kimi"]
+    },
+    "general": {
+      "LOW": ["glm-flash"],
+      "DEFAULT": [["deepseek-1017", "deepseek"]],
+      "HARD": ["sol-high", "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
+    },
+    "debugger": {
+      "LOW": ["glm-flash"],
+      "DEFAULT": [["deepseek-1017", "deepseek"]],
+      "HARD": ["sol-high", "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
+    },
+    "reviewer": {
+      "LOW": ["glm-flash"],
+      "DEFAULT": [["deepseek-1017", "deepseek"]],
+      "HARD": ["sol-high", "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
+    },
+    "architect": {
+      "LOW": ["glm-flash"],
+      "DEFAULT": [["deepseek-1017", "deepseek"]],
+      "HARD": ["sol-high", "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
+    },
+    "critic": {
+      "LOW": ["glm-flash", ["deepseek-1017", "deepseek"]],
+      "DEFAULT": [["deepseek-1017", "deepseek"], "sol-medium", "glm-flash", "kimi"],
+      "HARD": ["sol-high", ["deepseek-1017", "deepseek"], "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", ["deepseek-1017", "deepseek"], "kimi"]
+    }
   },
   "fallbacks": {
-    "LOW": ["gemini-high", "deepseek"],
-    "DEFAULT": ["deepseek", "gemini-high"],
-    "HARD": ["sol-high", "deepseek"],
-    "EXCEPTIONAL": ["sol-high"]
+    "LOW": ["glm-flash", ["deepseek-1017", "deepseek"]],
+    "DEFAULT": [["deepseek-1017", "deepseek"], "glm-flash"],
+    "HARD": ["sol-high", ["deepseek-1017", "deepseek"], "kimi"],
+    "EXCEPTIONAL": ["sol-high", "kimi"]
   },
-  "criticPreferences": { "gemini": "deepseek", "deepseek": "sol", "sol": "deepseek", "kimi": "sol", "opus": "sol" },
+  "criticPreferences": {
+    "gemini": "deepseek",
+    "deepseek": "sol",
+    "sol": "deepseek",
+    "kimi": "sol",
+    "opus": "sol",
+    "glm": "deepseek",
+    "mistral": "sol"
+  },
   "outputTokens": { "LOW": 4096, "DEFAULT": 8192, "HARD": 16384, "EXCEPTIONAL": 16384 },
   "steps": { "default": 30, "extended": 60 },
   "maxRequestsPerExecution": 100,
@@ -32,9 +78,9 @@
   "quota": {
     "maxAgeMs": 900000,
     "hardReservePp": 2,
-    "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25 },
-    "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2 },
-    "maxConcurrentPerAccount": { "antigravity": 4, "opencode-go": 4, "openai": 4 },
+    "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25, "mistral": 10, "oneprovider": 5 },
+    "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2, "mistral": 1, "oneprovider": 2 },
+    "maxConcurrentPerAccount": { "antigravity": 4, "opencode-go": 4, "openai": 4, "mistral": 4, "oneprovider": 2 },
     "maxConcurrentTotal": 8
   },
   "allowPaid": false,

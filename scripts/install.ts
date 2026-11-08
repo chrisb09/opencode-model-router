@@ -57,12 +57,12 @@ const connections = (await opencode.integration.list()).data
 const savedCredentials = await opencode.credential.list()
 const activeCredentialIDs = new Set(savedCredentials.filter(c => c.active).map(c => c.id))
 const credentialBindings: Array<{ providerID: string; credentialID: string; accountKey: string; credentialFingerprint?: string; integrationID?: string; workspaceID?: string }> = []
-for (const providerID of ["antigravity", "openai", "opencode-go", "oneprovider"]) {
+for (const providerID of ["antigravity", "openai", "opencode-go", "oneprovider", "mistral"]) {
   const integrationID = (await opencode.provider.get({ providerID })).data.integrationID ?? providerID
   const integration = connections.find(i => i.id === integrationID)
   for (const c of integration?.connections ?? []) if (c.type === "credential" && (providerID === "antigravity" ? c.method === "oauth" : activeCredentialIDs.has(c.id))) {
     const saved = savedCredentials.find(s => s.id === c.id)
-    credentialBindings.push({ providerID, integrationID, credentialID: c.id, accountKey: providerID === "antigravity" ? `google:${c.label.toLowerCase()}` : providerID === "openai" ? "codex:default" : `${providerID}:default`, credentialFingerprint: saved ? credentialFingerprint(providerID, saved.value, token) : undefined,
+    credentialBindings.push({ providerID, integrationID, credentialID: c.id, accountKey: providerID === "antigravity" ? `google:${c.label.toLowerCase()}` : providerID === "openai" ? "codex:default" : providerID === "mistral" ? "mistral-code:default" : `${providerID}:default`, credentialFingerprint: saved ? credentialFingerprint(providerID, saved.value, token) : undefined,
       workspaceID: providerID === "opencode-go" && saved?.value.type === "oauth" && typeof saved.value.metadata?.orgID === "string" ? saved.value.metadata.orgID : undefined })
   }
 }

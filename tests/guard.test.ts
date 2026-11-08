@@ -11,15 +11,18 @@ afterEach(() => open.splice(0).forEach(l => l.close()))
 async function fixture() {
   const ledger = new Ledger(":memory:"); open.push(ledger)
   const config = { url: "http://127.0.0.1:7695", collectorUrl: "https://quota.example.com", enabled: true }
-  const service = new RouterService(config, defaultPolicy(), ledger, "test-token", (async () => Response.json(snapshot())) as unknown as typeof fetch)
+  // The AI SDK guard covers custom transports (OneProvider); native subscription
+  // providers use the HTTP proxy instead.
+  const policy = defaultPolicy(); policy.allowPaid = true; policy.maxTaskUsd = 5; policy.totalBudgetUsd = 10
+  const service = new RouterService(config, policy, ledger, "test-token", (async () => Response.json(snapshot())) as unknown as typeof fetch)
   const client = new RouterClient(config, "test-token", ((url: any, init: any) => service.fetch(new Request(url, init))) as typeof fetch)
   await client.call("/registry", { directory: "/test", models: models(), bindings: bindings() })
-  const e = await client.call("/reserve", { id: "guard-test", task: task() }); ledger.bind(e.id, "ses_child", now)
+  const e = await client.call("/reserve", { id: "guard-test", task: task({ requestedModel: policy.aliases.opus }) }); ledger.bind(e.id, "ses_child", now)
   return { ledger, service, client, e }
 }
 const usage = { inputTokens: { total: 30, noCache: 20, cacheRead: 10 }, outputTokens: { total: 20, text: 15, reasoning: 5 } }
 const options = (id: string, model: string): any => ({ prompt: [{ role: "user", content: [{ type: "text", text: "test" }] }], headers: { "x-opencode-router-execution": id, "x-opencode-router-model": model }, maxOutputTokens: 100000 })
-const selected = { providerID: "antigravity", id: "antigravity-gemini-3.8-flash", modelID: "antigravity-gemini-3.8-flash" }
+const selected = { providerID: "oneprovider", id: "claude-opus-5-5", modelID: "claude-opus-5-5" }
 const wrap = (inner: any, client: RouterClient) => guardLanguage(inner, client, selected)
 const inner = (generate: (options: any) => any, stream?: (options: any) => any): any => ({ specificationVersion: "v3", provider: "test", modelId: selected.modelID, supportedUrls: {}, doGenerate: generate, doStream: stream })
 describe("request-scoped AI SDK guard", () => {
@@ -69,7 +72,7 @@ describe("request-scoped AI SDK guard", () => {
   })
   test("native/non-native context is not shared between concurrent requests", async () => {
     const { client, e, ledger } = await fixture()
-    const second = await client.call("/reserve", { id: "second", task: task() }); ledger.bind(second.id, "ses_second", now)
+    const second = await client.call("/reserve", { id: "second", task: task({ requestedModel: defaultPolicy().aliases.opus }) }); ledger.bind(second.id, "ses_second", now)
     const seen: any[] = []
     const guarded = wrap(inner(async o => { await Bun.sleep(1); seen.push(o.headers); return { usage } }), client)
     await Promise.all([guarded.doGenerate(options(e.id, e.candidate.model)), guarded.doGenerate(options(second.id, second.candidate.model))])

@@ -132,7 +132,7 @@ export class RouterService {
           locations: registries.map(r => ({ directory: r.directory, updatedAt: r.updatedAt, models: r.models.map(m => `${m.providerID}/${m.id}`) })),
           workflow: { enabled: this.config.workflow?.enabled !== false, available: this.workflow !== null, localOnly: true, defaultExportIncludesText: false, captureFailures: this.workflowFailures },
           maintenance: this.maintenance,
-          safeguards: { paidDispatch: "locked", kimiDispatch: "locked", quotaAccounting: "estimated percentage reservations", concurrencyChecks: this.config.testMode ? "disabled (test mode)" : "enabled", accountPinning: this.config.testMode ? "test-only" : "disabled", scope: "managed local subagents only", primaryModelSelection: "unchanged" }, ...this.ledger.status() })
+          safeguards: { paidDispatch: this.policy.allowPaid ? "enabled" : "locked", kimiDispatch: this.policy.allowKimi ? "enabled" : "locked", quotaAccounting: "estimated percentage reservations", concurrencyChecks: this.config.testMode ? "disabled (test mode)" : "enabled", accountPinning: this.config.testMode ? "test-only" : "disabled", scope: "managed local subagents only", primaryModelSelection: "unchanged" }, ...this.ledger.status() })
       }
       if (path === "/proxy" && request.method === "POST") return await this.proxy(request)
       if (request.method !== "POST") return json({ error: "Not found" }, 404)
@@ -310,7 +310,7 @@ export class RouterService {
     const e = this.ledger.get(id)
     if (!e) throw new Error("Unknown routed execution")
     const target = new URL(request.headers.get("x-router-target") ?? "invalid:")
-    const allowed = e.candidate.ref.providerID === "openai" ? ["api.openai.com", "chatgpt.com"] : e.candidate.ref.providerID === "opencode-go" ? ["opencode.ai"] : []
+    const allowed = e.candidate.ref.providerID === "openai" ? ["api.openai.com", "chatgpt.com"] : e.candidate.ref.providerID === "opencode-go" ? ["opencode.ai"] : e.candidate.ref.providerID === "mistral" ? ["api.mistral.ai"] : []
     if (target.protocol !== "https:" || !allowed.includes(target.hostname) || target.port || target.username || target.password) throw new Error("Unsupported native transport target")
     const binding = this.registry(e.task.directory).bindings.find(b => b.credentialID === e.candidate.account.credentialID && b.accountKey === e.candidate.account.key)
     verifyNativeCredential(e.candidate.ref.providerID, request.headers, binding?.credentialFingerprint, this.token,

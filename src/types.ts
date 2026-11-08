@@ -2,7 +2,7 @@ export const roles = ["explore", "research", "general", "debugger", "reviewer", 
 export const tiers = ["LOW", "DEFAULT", "HARD", "EXCEPTIONAL"] as const
 export type Role = typeof roles[number]
 export type Tier = typeof tiers[number]
-export type Family = "gemini" | "deepseek" | "sol" | "kimi" | "opus" | "unknown"
+export type Family = "gemini" | "deepseek" | "sol" | "kimi" | "opus" | "glm" | "mistral" | "unknown"
 export type ModelRef = { providerID: string; id: string; variant?: string }
 export interface CatalogModel extends ModelRef {
   modelID?: string
@@ -19,6 +19,8 @@ export interface QuotaWindow {
   resetAt: string | null
   source: "provider" | "estimate" | "unknown"
   checkedAt: number
+  /** Full window duration when the quota source publishes it; enables pace preference. */
+  durationMs?: number
   balanceUsd?: number
   expiresAt?: string
   availableUnits?: number
@@ -65,11 +67,15 @@ export interface Candidate {
   reasons: string[]
   rejected: string[]
 }
+/** Preference entries are alias names, raw model references, or a same-rank
+ *  group (nested array): group members share one preference rank and the
+ *  member whose account is furthest ahead of its quota-window progression wins. */
+export type Preference = string | string[]
 export interface Policy {
   version: number
   aliases: Record<string, string>
-  roles: Record<Role, Record<Tier, string[]>>
-  fallbacks: Record<Tier, string[]>
+  roles: Record<Role, Record<Tier, Preference[]>>
+  fallbacks: Record<Tier, Preference[]>
   criticPreferences: Partial<Record<Family, Family>>
   outputTokens: Record<Tier, number>
   /** Native OpenCode step budgets. Extended variants exist above the default. */
