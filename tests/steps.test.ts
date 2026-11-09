@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { defaultPolicy } from "../src/config.ts"
 import { agentDefinitions } from "../src/agents.ts"
 import { agentVariant, selectStepBudget } from "../src/steps.ts"
+import { roles } from "../src/types.ts"
 
 describe("native step budgets", () => {
   test("defaults to the base native budget", () => {
@@ -32,7 +33,7 @@ describe("native step budgets", () => {
   test("agent definitions expose hidden extended variants and preserve the 30-step default", () => {
     const p = defaultPolicy()
     const agents = agentDefinitions(p)
-    for (const role of ["explore", "research", "general", "debugger", "reviewer", "architect", "critic"]) {
+    for (const role of roles) {
       expect(agents[role].steps).toBe(p.steps.default)
       expect(agents[role].hidden).toBeUndefined()
       expect(agents[`${role}-extended`]).toMatchObject({ steps: p.steps.extended, hidden: true, mode: "subagent" })

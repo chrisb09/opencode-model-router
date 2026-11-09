@@ -170,10 +170,12 @@ describe("agent permissions and primary modes", () => {
     expect(effect("plan", "observatory_setup")).toBe("deny")
     expect(effect("plan", "shell")).toBe("deny")
   })
-  test("read-only agents cannot write, use arbitrary shell, or recurse", () => {
-    for (const id of ["explore", "research", "reviewer", "architect", "critic"]) {
-      expect(effect(id, "edit")).toBe("deny"); expect(effect(id, "shell")).toBe("deny"); expect(effect(id, "subagent")).toBe("deny")
+  test("read-only agents cannot write or recurse", () => {
+    for (const id of ["explore", "research", "reviewer", "architect", "critic", "media", "designer"]) {
+      expect(effect(id, "edit")).toBe("deny"); expect(effect(id, "subagent")).toBe("deny")
     }
+    for (const id of ["explore", "research", "reviewer", "architect", "critic", "designer"]) expect(effect(id, "shell")).toBe("deny")
+    expect(effect("media", "shell")).toBe("ask")
   })
   test("local explore and external research have different tools", () => {
     expect(effect("explore", "webfetch")).toBe("deny")

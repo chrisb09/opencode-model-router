@@ -1,29 +1,44 @@
 # Agreed subagent routing policy
 
-Agreed 2026-10-24; revised 2026-11-08 (Mistral onboarding, Gemini retirement,
-quota-pace groups). Plan and Build remain the only visible primary agents, with
-their model selected manually by the user. This policy routes delegated work only.
+Agreed 2026-10-24; revised 2026-11-09 (DeepSeek-low defaults, media and designer
+agents, Gemini retirement). Plan and Build remain the only visible primary
+agents, with their model selected manually by the user. This policy routes
+delegated work only.
 
 | Subagent | Responsibility / access | LOW | DEFAULT | HARD | EXCEPTIONAL |
 |---|---|---|---|---|---|
-| explore | Local code exploration; read-only | GLM Flash low | [DeepSeek 1017 high \| Go DeepSeek max], GLM Flash high | DeepSeek 1017 max, GLM max | Sol medium, Kimi high |
-| research | External documentation and research; read-only | GLM Flash low | [DeepSeek 1017 high \| Go DeepSeek max], GLM Flash high | DeepSeek 1017 max, GLM max | Sol high, Kimi high |
-| general | Implementation and refactoring; controlled writes, Build only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
-| debugger | Root-cause investigation; read-only, approved diagnostics | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
-| reviewer | Correctness, security, concurrency and performance; read-only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
-| architect | Design, algorithms, interfaces and tradeoffs; read-only | GLM Flash high | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
-| critic | Challenge assumptions and conclusions; read-only | GLM Flash, [DeepSeek group] | [DeepSeek group], Sol medium, GLM Flash, Kimi | Sol high, [DeepSeek group], Kimi | Opus 5.5*, Sol high, [DeepSeek group], Kimi |
+| explore | Local code exploration; read-only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 high \| Go DeepSeek max] | DeepSeek 1017 max, GLM max | Sol medium, Kimi high |
+| research | External documentation and research; read-only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 high \| Go DeepSeek max] | DeepSeek 1017 max, GLM max | Sol high, Kimi high |
+| general | Implementation and refactoring; controlled writes, Build only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| debugger | Root-cause investigation; read-only, approved diagnostics | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| reviewer | Correctness, security, concurrency and performance; read-only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| architect | Design, algorithms, interfaces and tradeoffs; read-only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| designer | Visual design, UX, layout, typography and design-system consistency; read-only | [DeepSeek 1017 low \| Go DeepSeek low] | [DeepSeek 1017 max \| Go DeepSeek max] | Sol high, Kimi high | Opus 5.5*, Sol high, Kimi high |
+| critic | Challenge assumptions and conclusions; read-only | GLM Flash high, [DeepSeek group] | [DeepSeek group], Sol medium, Kimi | Sol high, [DeepSeek group], Kimi | Opus 5.5*, Sol high, [DeepSeek group], Kimi |
+| media | Analyze images, video and PDFs natively; read-only, approved media diagnostics | GLM Flash low | GLM Flash high | GLM Flash max | GLM Flash max |
 
-GLM Flash means `mistral/zai-glm-5-3-flash` (`low`/`high`); it is the only
-routed model with image/video/pdf input, so multimodal tasks fall to it when
-text-only models are rejected by the capability filter.
-DeepSeek 1017 means `mistral/deepseek-v4-1-flash-1017` (`high`/`max`).
+DeepSeek 1017 means `mistral/deepseek-v4-1-flash-1017` (`low`/`high`/`max`).
+Go DeepSeek means `opencode-go/deepseek-v4.1-flash` (`low`/`max`).
+GLM Flash means `mistral/zai-glm-5-3-flash` (`low`/`high`/`max`).
 GLM max means `mistral/zai-glm-5-3#max` (strong knowledge synthesis; used for
 HARD exploration/research alternatives, not implementation).
-Go DeepSeek means `opencode-go/deepseek-v4.1-flash#max`.
 Sol means `openai/gpt-6.1-sol`, using only `medium` and `high` automatically.
 Kimi means `opencode-go/kimi-k3.1-pro#high`. Opus means
 `oneprovider/claude-opus-5-5`, **without a reasoning variant**.
+
+**Media input.** GLM Flash is the only routed model that accepts video and PDF
+natively, so the `media` agent owns those inputs. Images are handled by the
+normal text agents: Go DeepSeek accepts images, while Mistral DeepSeek 1017 is
+text-only, so image tasks fall through the DeepSeek pace group to the Go member.
+Kimi also accepts video but not PDF; it is not part of the media route.
+The media agent may request approval to run read-only `ffprobe`/`ffmpeg`
+diagnostics for local video, and must never modify source media.
+
+**Designer.** The `designer` agent reviews visual hierarchy, spacing,
+typography, color, accessibility, responsive behavior and design-system
+consistency. It is read-only and returns prioritized findings and concrete
+direction; implementation stays with `general`. Its EXCEPTIONAL tier is the only
+designer route that uses paid Opus 5.5.
 
 **Quota-pace groups.** A bracketed pair `[A | B]` shares one preference rank:
 the member whose account is furthest ahead of its quota-window progression wins.

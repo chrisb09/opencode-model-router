@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, copyFile, chmod } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { paths } from "../src/config.ts"
+import { roles } from "../src/types.ts"
 
 // Add only workflow settings/permissions; do not reinstall or replace agent models.
 const p = paths(), configPath = join(homedir(), ".config/opencode/opencode.jsonc")
@@ -15,7 +16,7 @@ await mkdir(backup, { recursive: true, mode: 0o700 })
 for (const [from, name] of [[configPath, "opencode.jsonc"], [p.config, "router-config.json"], [manifestPath, "installation.json"]]) {
   await copyFile(from, join(backup, name)); await chmod(join(backup, name), 0o600)
 }
-for (const id of ["plan", "build", "explore", "research", "general", "debugger", "reviewer", "architect", "critic", "explore-extended", "research-extended", "general-extended", "debugger-extended", "reviewer-extended", "architect-extended", "critic-extended"]) {
+for (const id of ["plan", "build", ...roles.flatMap(role => [role, `${role}-extended`])]) {
   const agent = config.agents?.[id]
   if (!agent) continue
   const actions = ["workflow_read", "model-router_get_workflow", "model-router_list_workflows", ...(["plan", "build"].includes(id) ? ["workflow_annotate"] : [])]

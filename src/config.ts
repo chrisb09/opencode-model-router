@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { readFile } from "node:fs/promises"
 import { z } from "zod"
 import defaults from "../config/policy.json"
-import type { Policy } from "./types.ts"
+import { roles, type Policy } from "./types.ts"
 
 export const paths = (home = homedir()) => ({
   config: join(home, ".config/opencode-model-router/config.json"),
@@ -36,7 +36,7 @@ export async function loadPolicy(file?: string): Promise<Policy> {
   const preference = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)])
   // The critic-family bonus (100_000) must dominate any rank penalty (1_000 per
   // rank); bounding the list keeps that invariant for custom policies.
-  const roleMap = Object.fromEntries(["explore", "research", "general", "debugger", "reviewer", "architect", "critic"].map(r => [r, tierMap(z.array(preference).min(1).max(64))]))
+  const roleMap = Object.fromEntries(roles.map(r => [r, tierMap(z.array(preference).min(1).max(64))]))
   return z.object({
     version: z.literal(1), aliases: z.record(z.string(), z.string().min(1)), roles: z.object(roleMap).strict(),
     fallbacks: tierMap(z.array(preference).max(64)), criticPreferences: z.record(z.string(), z.enum(["gemini", "deepseek", "sol", "kimi", "opus", "glm", "mistral", "unknown"])),

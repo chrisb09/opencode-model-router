@@ -1,4 +1,4 @@
-export const roles = ["explore", "research", "general", "debugger", "reviewer", "architect", "critic"] as const
+export const roles = ["explore", "research", "general", "debugger", "reviewer", "architect", "critic", "media", "designer"] as const
 export const tiers = ["LOW", "DEFAULT", "HARD", "EXCEPTIONAL"] as const
 export type Role = typeof roles[number]
 export type Tier = typeof tiers[number]

@@ -140,7 +140,7 @@ describe("native subagent dispatch integration", () => {
   test("concurrent tasks choose different models without changing the primary", async () => {
     const f = await fixture(); const before = structuredClone(f.parent.model)
     await Promise.all([f.invoke({ routing: { tier: "LOW" } }), f.invoke({ routing: { tier: "HARD" } })])
-    expect(new Set(f.calls.map(c => c.model))).toEqual(new Set([defaultPolicy().aliases["glm-flash-low"], defaultPolicy().aliases["deepseek-1017"]]))
+    expect(new Set(f.calls.map(c => c.model))).toEqual(new Set([defaultPolicy().aliases["deepseek-1017-low"], defaultPolicy().aliases["deepseek-1017"]]))
     expect(f.parent.model).toEqual(before)
   })
   test("Plan cannot dispatch the implementation role", async () => {
@@ -180,8 +180,8 @@ describe("native subagent dispatch integration", () => {
   test("critic gets actual original session provenance", async () => {
     const f = await fixture(); const original = await f.invoke({ routing: { tier: "LOW" } })
     await f.invoke({ agent: "critic", routing: { originSessionID: original.metadata.sessionID } })
-    expect(f.calls[1].model).toBe(defaultPolicy().aliases["deepseek-1017"])
-    expect(f.calls[1].prompt).toContain(defaultPolicy().aliases["glm-flash-low"])
+    expect(f.calls[1].model).toBe(defaultPolicy().aliases["sol-medium"])
+    expect(f.calls[1].prompt).toContain(defaultPolicy().aliases["deepseek-1017-low"])
   })
   test("native step budget selects the hidden extended agent and is recorded", async () => {
     const f = await fixture(); const result = await f.invoke({ routing: { steps: 45 } })

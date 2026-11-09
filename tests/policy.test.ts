@@ -50,9 +50,24 @@ describe("agreed policy", () => {
     a.find(x => x.providerID === "opencode-go")!.windows[2].remainingPct = 0
     expect(choose(task({ role: "general" }), a)).toBeUndefined()
   })
-  test("catalog-level rejection of both DeepSeeks falls back to GLM Flash", () => {
+  test("catalog-level rejection of both DeepSeeks fails closed for general", () => {
     const m = models().filter(m => !((m.providerID === "mistral" && m.id === "deepseek-v4-1-flash-1017") || (m.providerID === "opencode-go" && m.id === "deepseek-v4.1-flash")))
-    expect(choose(task({ role: "general" }), accounts(), m)!.model).toBe(defaultPolicy().aliases["glm-flash"])
+    expect(choose(task({ role: "general" }), accounts(), m)).toBeUndefined()
+  })
+  test("LOW uses DeepSeek Flash at low effort instead of GLM Flash", () => {
+    const selected = choose(task({ tier: "LOW" }))!
+    expect(selected.family).toBe("deepseek")
+    expect(selected.ref.variant).toBe("low")
+    expect(selected.model).toBe(defaultPolicy().aliases["deepseek-1017-low"])
+  })
+  test("critic LOW falls to GLM Flash when the origin is DeepSeek", () => {
+    const selected = choose(task({ role: "critic", tier: "LOW", originModel: defaultPolicy().aliases["deepseek-1017-low"] }))!
+    expect(selected.model).toBe(defaultPolicy().aliases["glm-flash"])
+  })
+  test("designer exceptional uses Opus when paid dispatch is enabled", () => {
+    const p = defaultPolicy(); p.allowPaid = true; p.maxTaskUsd = 5; p.totalBudgetUsd = 10
+    const selected = recommend(p, task({ role: "designer", tier: "EXCEPTIONAL" }), models(), accounts(), now).candidates.find(c => !c.rejected.length)!
+    expect(selected.family).toBe("opus")
   })
   test("no specified Opus effort", () => expect(defaultPolicy().aliases.opus).toBe("oneprovider/claude-opus-5-5"))
   test("Plan cannot launch general", () => expect(choose(task({ role: "general", parentAgent: "plan" }))).toBeUndefined())
@@ -114,11 +129,16 @@ describe("agreed policy", () => {
     expect(choose(task({ role: "critic", originModel: "oneprovider/deepseek-v4.1-flash", requestedModel: defaultPolicy().aliases.deepseek }))).toBeUndefined()
     expect(choose(task({ role: "critic", originModel: defaultPolicy().aliases.glm, requestedModel: defaultPolicy().aliases["deepseek-1017"] }))).toBeDefined()
   })
-  test("multimodal tasks fall to GLM Flash when the DeepSeeks are text-only", () => {
-    const m = models()
-    for (const model of m) if (!(model.providerID === "mistral" && model.id === "zai-glm-5-3-flash")) model.capabilities.input = ["text"]
-    const selected = choose(task({ modalities: ["text", "image"] }), accounts(), m)!
-    expect(selected.model).toBe(defaultPolicy().aliases["glm-flash"])
+  test("image tasks fall through the DeepSeek group to the image-capable Go member", () => {
+    const selected = choose(task({ modalities: ["text", "image"] }))!
+    expect(selected.model).toBe(defaultPolicy().aliases.deepseek)
+  })
+  test("video and PDF tasks route to the media agent's GLM Flash", () => {
+    expect(choose(task({ role: "media", modalities: ["text", "video"] }))!.model).toBe(defaultPolicy().aliases["glm-flash"])
+    expect(choose(task({ role: "media", modalities: ["text", "pdf"] }))!.model).toBe(defaultPolicy().aliases["glm-flash"])
+  })
+  test("media HARD uses GLM Flash max", () => {
+    expect(choose(task({ role: "media", tier: "HARD", modalities: ["text", "video"] }))!.model).toBe(defaultPolicy().aliases["glm-flash-max"])
   })
   test("hard reserve cannot be bypassed by critical importance", () => {
     const a = accounts(); a.forEach(a => a.windows.forEach(w => w.remainingPct = 2))

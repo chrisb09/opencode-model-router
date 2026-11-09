@@ -3,10 +3,13 @@
   "aliases": {
     "glm-flash-low": "mistral/zai-glm-5-3-flash#low",
     "glm-flash": "mistral/zai-glm-5-3-flash#high",
+    "glm-flash-max": "mistral/zai-glm-5-3-flash#max",
+    "deepseek-1017-low": "mistral/deepseek-v4-1-flash-1017#low",
     "deepseek-1017-high": "mistral/deepseek-v4-1-flash-1017#high",
     "deepseek-1017": "mistral/deepseek-v4-1-flash-1017#max",
-    "glm": "mistral/zai-glm-5-3#max",
+    "deepseek-low": "opencode-go/deepseek-v4.1-flash#low",
     "deepseek": "opencode-go/deepseek-v4.1-flash#max",
+    "glm": "mistral/zai-glm-5-3#max",
     "sol-medium": "openai/gpt-6.1-sol#medium",
     "sol-high": "openai/gpt-6.1-sol#high",
     "opus": "oneprovider/claude-opus-5-5",
@@ -14,51 +17,63 @@
   },
   "roles": {
     "explore": {
-      "LOW": ["glm-flash-low"],
-      "DEFAULT": [["deepseek-1017-high", "deepseek"], "glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
+      "DEFAULT": [["deepseek-1017-high", "deepseek"]],
       "HARD": ["deepseek-1017", "glm"],
       "EXCEPTIONAL": ["sol-medium", "kimi"]
     },
     "research": {
-      "LOW": ["glm-flash-low"],
-      "DEFAULT": [["deepseek-1017-high", "deepseek"], "glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
+      "DEFAULT": [["deepseek-1017-high", "deepseek"]],
       "HARD": ["deepseek-1017", "glm"],
       "EXCEPTIONAL": ["sol-high", "kimi"]
     },
     "general": {
-      "LOW": ["glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
       "DEFAULT": [["deepseek-1017", "deepseek"]],
       "HARD": ["sol-high", "kimi"],
       "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
     },
     "debugger": {
-      "LOW": ["glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
       "DEFAULT": [["deepseek-1017", "deepseek"]],
       "HARD": ["sol-high", "kimi"],
       "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
     },
     "reviewer": {
-      "LOW": ["glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
       "DEFAULT": [["deepseek-1017", "deepseek"]],
       "HARD": ["sol-high", "kimi"],
       "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
     },
     "architect": {
-      "LOW": ["glm-flash"],
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
       "DEFAULT": [["deepseek-1017", "deepseek"]],
       "HARD": ["sol-high", "kimi"],
       "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
     },
     "critic": {
       "LOW": ["glm-flash", ["deepseek-1017", "deepseek"]],
-      "DEFAULT": [["deepseek-1017", "deepseek"], "sol-medium", "glm-flash", "kimi"],
+      "DEFAULT": [["deepseek-1017", "deepseek"], "sol-medium", "kimi"],
       "HARD": ["sol-high", ["deepseek-1017", "deepseek"], "kimi"],
       "EXCEPTIONAL": ["opus", "sol-high", ["deepseek-1017", "deepseek"], "kimi"]
+    },
+    "media": {
+      "LOW": ["glm-flash-low"],
+      "DEFAULT": ["glm-flash"],
+      "HARD": ["glm-flash-max"],
+      "EXCEPTIONAL": ["glm-flash-max"]
+    },
+    "designer": {
+      "LOW": [["deepseek-1017-low", "deepseek-low"]],
+      "DEFAULT": [["deepseek-1017", "deepseek"]],
+      "HARD": ["sol-high", "kimi"],
+      "EXCEPTIONAL": ["opus", "sol-high", "kimi"]
     }
   },
   "fallbacks": {
-    "LOW": ["glm-flash", ["deepseek-1017", "deepseek"]],
-    "DEFAULT": [["deepseek-1017", "deepseek"], "glm-flash"],
+    "LOW": [["deepseek-1017", "deepseek"]],
+    "DEFAULT": [["deepseek-1017", "deepseek"]],
     "HARD": ["sol-high", ["deepseek-1017", "deepseek"], "kimi"],
     "EXCEPTIONAL": ["sol-high", "kimi"]
   },

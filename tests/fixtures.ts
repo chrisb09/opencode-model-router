@@ -8,8 +8,12 @@ export const now = Date.now()
 export const task = (patch: Partial<Task> = {}): Task => ({ role: "explore", tier: "DEFAULT", importance: "normal", parentAgent: "build", parentSessionID: "ses_parent", directory: "/test", inputTokens: 1000, modalities: ["text"], ...patch })
 export const models = (): CatalogModel[] => [...new Set(Object.values(defaultPolicy().aliases).map(s => s.split("#")[0]))].map(name => {
   const ref = parseModel(name)
+  const input = ref.providerID === "mistral" ? (ref.id === "zai-glm-5-3-flash" ? ["text", "image", "video", "pdf"] : ["text"])
+    : ref.providerID === "openai" || ref.providerID === "oneprovider" ? ["text", "image", "pdf"]
+    : ref.providerID === "opencode-go" && ref.id === "kimi-k3.1-pro" ? ["text", "image", "video"]
+    : ["text", "image"]
   return { ...ref, enabled: true, limit: ref.providerID === "openai" ? { context: 628000, input: 500000, output: 128000 } : { context: 1000000, output: 65536 },
-    variants: (ref.providerID === "oneprovider" ? [] : ["low", "medium", "high", "max", "xhigh"]).map(id => ({ id })), capabilities: { tools: true, input: ["text", "image"], output: ["text"] }, cost: [] }
+    variants: (ref.providerID === "oneprovider" ? [] : ["low", "medium", "high", "max", "xhigh"]).map(id => ({ id })), capabilities: { tools: true, input, output: ["text"] }, cost: [] }
 })
 export const jwt = (account = "test-account") => `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).toString("base64url")}.test-signature`
 export const bindings = (secret?: string): Binding[] => [

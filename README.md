@@ -12,8 +12,8 @@ Opus 5.5 has **no specified reasoning variant**.
 
 ## Installed components
 
-- Seven focused subagent prompts and native V2 permissions: explore, research,
-  general, debugger, reviewer, architect, critic.
+- Nine focused subagent prompts and native V2 permissions: explore, research,
+  general, debugger, reviewer, architect, critic, media, designer.
 - Four tiers, separate importance, context/output and modality checks.
 - Critic family independence and original-session provenance.
 - Shared local SQLite reservations, measured per-account and global concurrency
@@ -198,7 +198,7 @@ Stale/reset-crossing quotas request a collector refresh, respecting its cooldown
 
 ## Native steps and concurrency
 
-The seven visible agents use native `steps: 30`. A hidden `<role>-extended`
+The nine visible agents use native `steps: 30`. A hidden `<role>-extended`
 variant uses `steps: 60`. The coordinator may set `routing.steps` to 1–60; values
 above 30 select the extended variant. This keeps OpenCode's own final-step
 summary behavior. The router's `maxRequestsPerExecution` (100) is a runaway

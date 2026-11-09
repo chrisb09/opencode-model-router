@@ -27,7 +27,7 @@ export const primaryTraceSchema = z.object({
 type PrimaryTrace = z.infer<typeof primaryTraceSchema>
 type SpanRow = { payload: string; sequence: number | null }
 const stable = (kind: string, id: string) => `${kind}:${createHash("sha256").update(id).digest("hex").slice(0, 32)}`
-const purposeFor = (role: string): Purpose => ({ explore: "exploration", research: "research", general: "implementation", debugger: "debugging", reviewer: "review", architect: "planning", critic: "criticism", plan: "planning", build: "integration" } as Record<string, Purpose>)[role] ?? "unknown"
+const purposeFor = (role: string): Purpose => ({ explore: "exploration", research: "research", general: "implementation", debugger: "debugging", reviewer: "review", architect: "planning", critic: "criticism", media: "research", designer: "planning", plan: "planning", build: "integration" } as Record<string, Purpose>)[role] ?? "unknown"
 const maxTasks = 500, maxSpans = 2000, maxEvents = 5000
 class WorkflowLimitError extends Error {}
 
