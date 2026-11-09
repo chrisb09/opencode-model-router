@@ -49,6 +49,9 @@ without a published duration fall back to raw availability. Pace only decides
 request reservations remain absolute. This prefers quota that would otherwise
 be forfeited at a monthly reset (e.g. Mistral at 95% with days left over Go at
 45% of a fresh window) and reverses automatically as windows progress.
+API-key providers (Mistral Code and OneProvider) carry **no soft reserve**; the
+2pp hard floor and per-request estimates still apply. OAuth subscription
+providers keep their conservation floors.
 
 Gemini 3.8 Flash (`antigravity`) is retired from routing as of 2026-11-08; the
 antigravity provider plumbing remains in place but dormant. GLM-5.3 max is the

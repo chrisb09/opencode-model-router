@@ -93,7 +93,7 @@
   "quota": {
     "maxAgeMs": 900000,
     "hardReservePp": 2,
-    "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25, "mistral": 10, "oneprovider": 5 },
+    "softReservePp": { "antigravity": 5, "opencode-go": 15, "openai": 25, "mistral": 0, "oneprovider": 0 },
     "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2, "mistral": 1, "oneprovider": 2 },
     "maxConcurrentPerAccount": { "antigravity": 4, "opencode-go": 4, "openai": 4, "mistral": 4, "oneprovider": 2 },
     "maxConcurrentTotal": 8
