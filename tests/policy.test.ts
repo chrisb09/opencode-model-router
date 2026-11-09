@@ -144,6 +144,24 @@ describe("agreed policy", () => {
     const a = accounts(); a.forEach(a => a.windows.forEach(w => w.remainingPct = 2))
     expect(choose(task({ importance: "critical" }), a)).toBeUndefined()
   })
+  test("soft reserve applies only to the longest quota window", () => {
+    const a = accounts()
+    a.find(x => x.providerID === "openai")!.windows.find(w => w.key === "codex-5h")!.remainingPct = 4.5
+    expect(choose(task({ requestedModel: defaultPolicy().aliases["sol-high"] }), a)).toBeDefined()
+  })
+  test("soft reserve still blocks when the longest window is low", () => {
+    const a = accounts()
+    a.find(x => x.providerID === "openai")!.windows.find(w => w.key === "codex-weekly")!.remainingPct = 6
+    expect(choose(task({ requestedModel: defaultPolicy().aliases["sol-high"] }), a)).toBeUndefined()
+  })
+  test("short Go windows use the hard floor while the monthly reserve holds", () => {
+    const a = accounts()
+    const go = a.find(x => x.providerID === "opencode-go")!
+    go.windows.find(w => w.key === "opencode-go-5h")!.remainingPct = 2.5
+    expect(choose(task({ requestedModel: defaultPolicy().aliases.deepseek }), a)).toBeDefined()
+    go.windows.find(w => w.key === "opencode-go-monthly")!.remainingPct = 5
+    expect(choose(task({ requestedModel: defaultPolicy().aliases.deepseek }), a)).toBeUndefined()
+  })
   test("remote or credential-bearing router URLs are refused", () => {
     for (const url of ["https://example.com", "http://localhost:7695", "http://a:b@127.0.0.1:7695", "http://127.0.0.1:7695/path"]) expect(() => assertLocalUrl(url)).toThrow()
   })

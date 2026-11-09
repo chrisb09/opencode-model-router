@@ -176,7 +176,9 @@ Policy configuration includes:
 - Idle-execution maintenance interval and operator recovery.
 - Critic family preferences.
 
-Soft floors can be relaxed to the hard floor for critical work. A user tier
+Soft floors apply only to each provider's longest window (weekly/monthly); short
+burst windows use the hard floor, and critical work can relax soft floors to the
+hard floor. A user tier
 override does not override quota, context, independence or spending safeguards.
 Unknown, stale, missing, exhausted or post-reset-unconfirmed windows block
 dispatch. Credit expiry is not replenishment. All applicable windows are checked

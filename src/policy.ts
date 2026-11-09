@@ -85,6 +85,11 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
       // wins same-rank ties so quota that would otherwise be forfeited at reset
       // is spent first. Windows without a published duration fall back to raw
       // availability. The cap keeps policy rank dominant over quota abundance.
+      // Soft conservation floors protect only the longest window (weekly or
+      // monthly). Short burst windows reset quickly and use the hard floor.
+      // Without published durations, keep the conservative all-window floor.
+      const maxDuration = Math.max(0, ...account.windows.map(w => w.durationMs ?? 0))
+      const softFloor = policy.quota.softReservePp[ref.providerID] ?? 0
       let pace = Infinity
       for (const w of account.windows) {
         const available = w.remainingPct === null ? null : w.remainingPct - pressure(account.key, w.key, w.checkedAt)
@@ -96,7 +101,8 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
             windowPace = available / fraction
           }
           pace = Math.min(pace, Math.min(500, windowPace))
-          const floor = task.importance === "critical" ? policy.quota.hardReservePp : Math.max(policy.quota.hardReservePp, policy.quota.softReservePp[ref.providerID] ?? 0)
+          const floor = task.importance === "critical" ? policy.quota.hardReservePp
+            : Math.max(policy.quota.hardReservePp, maxDuration > 0 && w.durationMs !== maxDuration ? 0 : softFloor)
           if (available - estimatedRequestPp < floor) rejected.push(`Quota reserve reached: ${w.key}`)
         }
         if (!Number.isFinite(w.checkedAt) || now - w.checkedAt > policy.quota.maxAgeMs) rejected.push(`Stale quota: ${w.key}`)
