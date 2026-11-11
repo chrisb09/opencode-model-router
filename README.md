@@ -172,7 +172,8 @@ Policy configuration includes:
 - Output budgets, native step buckets, a high request backstop and a bounded
   concurrency wait.
 - Maximum quota age, hard reserve and soft conservation floors.
-- Estimated percentage-point usage, per-account concurrency and a global cap.
+- Estimated percentage-point usage, optional per-account Mistral USD allowances,
+  per-account concurrency and a global cap.
 - Idle-execution maintenance interval and operator recovery.
 - Critic family preferences.
 
@@ -258,9 +259,32 @@ Subscription reservation quantities are explicitly **estimated percentage
 points**, not exact provider token capacity. Go raw meter units are exposed when
 available, but their conversion to task consumption is not assumed. Codex and
 Antigravity do not expose sufficient absolute capacity for a mathematical token
-reservation. The installed caps are conservative, locally measured burst limits;
-provider behavior and quotas can change, so remeasure after material provider
-changes and keep headroom for other clients.
+reservation. Mistral is the exception when valid catalog prices and an allowance
+are available: its hold is the uncached serialized-byte/output-cap cost converted
+to percentage points. The allowance must be configured for that exact account. The committed
+policy configures the observed-history inference for `mistral-code:default` as:
+
+```json
+"quota": {
+  "mistralBudgetUsd": { "mistral-code:default": 150 }
+}
+```
+
+For an existing custom `policy.json`, add only `mistralBudgetUsd` inside the
+existing `quota` object (do not replace its other fields). The field is optional:
+if it or valid prices are absent, Mistral retains
+the scaled `estimatedRequestPp` fallback. No allowance is inferred for any other
+account. Current Mistral collector data has no numeric allowance.
+
+Each physical request snapshots its budget and complete price tiers at preflight.
+A valid completed request settles using inclusive input tokens minus the cached
+subset, cache-read pricing, and output tokens (reasoning is already included).
+Unknown/invalid usage and failed/uncertain requests keep the full hold. Unsupported
+or invalid tier metadata uses the fallback rather than guessing. Existing ledger
+rows have no price snapshot and are never retroactively repriced; their old debt
+remains until a fresh quota observation. The installed caps are conservative,
+locally measured burst limits; provider behavior and quotas can change, so
+remeasure after material provider changes and keep headroom for other clients.
 
 The ledger prevents oversubscription among managed local tasks; it cannot stop
 other machines, manually selected primaries, the Codex CLI or unrelated API

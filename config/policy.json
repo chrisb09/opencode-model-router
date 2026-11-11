@@ -95,6 +95,7 @@
     "hardReservePp": 2,
     "softReservePp": { "antigravity": 5, "opencode-go": 5, "openai": 5, "mistral": 0, "oneprovider": 0 },
     "estimatedRequestPp": { "antigravity": 0.5, "opencode-go": 0.1, "openai": 2, "mistral": 1, "oneprovider": 2 },
+    "mistralBudgetUsd": { "mistral-code:default": 150 },
     "maxConcurrentPerAccount": { "antigravity": 4, "opencode-go": 4, "openai": 4, "mistral": 4, "oneprovider": 2 },
     "maxConcurrentTotal": 8
   },

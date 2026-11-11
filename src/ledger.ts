@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import type { Candidate, Execution, Task, Usage } from "./types.ts"
+import { settledMistralPp, type MistralCostSnapshot } from "./mistral-cost.ts"
 
 type Row = { id: string; child_session_id: string | null; state: Execution["state"]; task: string; candidate: string; created_at: number; updated_at: number }
 export class Ledger {
@@ -16,7 +17,8 @@ export class Ledger {
         id TEXT PRIMARY KEY, execution_id TEXT NOT NULL REFERENCES executions(id),
         account_key TEXT NOT NULL, model TEXT NOT NULL, state TEXT NOT NULL,
         estimate_pp REAL NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER,
-        usage TEXT, input_bound INTEGER NOT NULL, output_bound INTEGER NOT NULL);
+        usage TEXT, input_bound INTEGER NOT NULL, output_bound INTEGER NOT NULL,
+        cost_snapshot TEXT);
       CREATE INDEX IF NOT EXISTS request_account ON requests(account_key,started_at);
       CREATE TABLE IF NOT EXISTS failures (
         account_key TEXT NOT NULL, model TEXT NOT NULL, until_at INTEGER NOT NULL,
@@ -26,6 +28,9 @@ export class Ledger {
         kind TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS registry (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `)
+    if (!this.db.query<{ name: string }, []>("PRAGMA table_info(requests)").all().some(c => c.name === "cost_snapshot")) {
+      this.db.exec("ALTER TABLE requests ADD COLUMN cost_snapshot TEXT")
+    }
   }
   close() { this.db.close() }
   atomic<T>(fn: () => T): T { return this.db.transaction(fn).immediate() }
@@ -87,11 +92,21 @@ export class Ledger {
   }
   requestCount(id: string): number { return this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM requests WHERE execution_id=?").get(id)!.n }
   reserveRequest(id: string, execution: Execution, inputBound: number, outputBound: number, now: number) {
-    this.db.query("INSERT INTO requests VALUES(?,?,?,?,'reserved',?,?,NULL,NULL,?,?)").run(id, execution.id, execution.candidate.account.key, execution.candidate.model, execution.candidate.estimatedRequestPp, now, inputBound, outputBound)
+    this.db.query(`INSERT INTO requests(id,execution_id,account_key,model,state,estimate_pp,started_at,ended_at,usage,input_bound,output_bound,cost_snapshot)
+      VALUES(?,?,?,?,'reserved',?,?,NULL,NULL,?,?,?)`).run(id, execution.id, execution.candidate.account.key, execution.candidate.model, execution.candidate.estimatedRequestPp, now, inputBound, outputBound, execution.candidate.mistralCost ? JSON.stringify(execution.candidate.mistralCost) : null)
   }
   settleRequest(id: string, usage: Usage, now: number) {
-    const changed = this.db.query("UPDATE requests SET state=?,ended_at=?,usage=? WHERE id=? AND state='reserved'").run(usage.status, now, JSON.stringify(usage), id).changes
-    return changed > 0
+    const row = this.db.query<{ estimate_pp: number; cost_snapshot: string | null }, [string]>("SELECT estimate_pp,cost_snapshot FROM requests WHERE id=? AND state='reserved'").get(id)
+    if (!row) return false
+    let estimate = row.estimate_pp
+    if (row.cost_snapshot) {
+      try {
+        const settled = settledMistralPp(JSON.parse(row.cost_snapshot) as MistralCostSnapshot, usage)
+        if (settled !== null) estimate = settled
+      } catch { /* Corrupt/incomplete metadata retains the full reservation. */ }
+    }
+    this.db.query("UPDATE requests SET state=?,ended_at=?,usage=?,estimate_pp=? WHERE id=? AND state='reserved'").run(usage.status, now, JSON.stringify(usage), estimate, id)
+    return true
   }
   reconcile(id: string, now: number, automatic = false) {
     return this.atomic(() => {

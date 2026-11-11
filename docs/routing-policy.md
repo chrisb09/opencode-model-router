@@ -50,9 +50,14 @@ request reservations remain absolute. This prefers quota that would otherwise
 be forfeited at a monthly reset (e.g. Mistral at 95% with days left over Go at
 45% of a fresh window) and reverses automatically as windows progress.
 API-key providers (Mistral Code and OneProvider) carry **no soft reserve**; the
-2pp hard floor and per-request estimates still apply. OAuth subscription
-providers use a 5% soft floor, applied only to their longest window (weekly or
-monthly); short 5h windows use the hard floor.
+2pp hard floor and per-request estimates still apply. With valid model prices and
+an account-specific allowance, Mistral per-request estimates are monetary:
+uncached full-byte input plus capped output for the reservation, then measured
+inclusive-input/cache/output usage after a valid completion. Price tiers and the
+allowance are snapshotted per physical request. Missing metadata retains the
+legacy fallback; unknown/failed/uncertain usage retains the full reservation.
+OAuth subscription providers use a 5% soft floor, applied only to their longest
+window (weekly or monthly); short 5h windows use the hard floor.
 
 Gemini 3.8 Flash (`antigravity`) is retired from routing as of 2026-11-08; the
 antigravity provider plumbing remains in place but dormant. GLM-5.3 max is the

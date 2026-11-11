@@ -1,4 +1,5 @@
 import type { Account, Candidate, CatalogModel, Family, ModelRef, Policy, Preference, Task } from "./types.ts"
+import { estimateRequest } from "./mistral-cost.ts"
 
 export function parseModel(value: string): ModelRef {
   const match = /^([^/#]+)\/([^#]+)(?:#([^#]+))?$/.exec(value)
@@ -79,7 +80,8 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
         if (task.modalities.some(m => !model.capabilities.input.includes(m))) rejected.push("Unsupported input modality")
         if (input > Math.min(model.limit.input ?? Infinity, model.limit.context - outputTokens) || outputTokens > model.limit.output) rejected.push("Insufficient usable context/output capacity")
       }
-      const estimatedRequestPp = Math.min(100, (policy.quota.estimatedRequestPp[ref.providerID] ?? 100) * Math.max(1, (task.inputTokens + 8192 + outputTokens) / 50000))
+      const estimate = estimateRequest(policy, model, account, input, outputTokens)
+      const estimatedRequestPp = estimate.estimatedRequestPp
       // Pace compares available quota against the pro-rata expectation for the
       // time left in each window: an account ahead of its monthly progression
       // wins same-rank ties so quota that would otherwise be forfeited at reset
@@ -120,7 +122,7 @@ export function recommend(policy: Policy, task: Task, models: CatalogModel[], ac
       const score = (preferredCritic ? 100_000 : 0) - rank * 1000 + pace
       if (preferredCritic) reasons.push("Preferred independent critic family")
       reasons.push("All applicable windows checked separately", "Quota reservation is a conservative estimate, not provider token capacity")
-      candidates.push({ model: name, ref, family, account, outputTokens, estimatedRequestPp, score, reasons, rejected: [...new Set(rejected)] })
+      candidates.push({ model: name, ref, family, account, outputTokens, estimatedRequestPp, ...(estimate.mistralCost ? { mistralCost: estimate.mistralCost } : {}), score, reasons, rejected: [...new Set(rejected)] })
     }
   }
   return { candidates: candidates.sort((a, b) => Number(a.rejected.length > 0) - Number(b.rejected.length > 0) || b.score - a.score || a.account.key.localeCompare(b.account.key)), errors }

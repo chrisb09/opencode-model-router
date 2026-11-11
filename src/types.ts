@@ -63,6 +63,7 @@ export interface Candidate {
   account: Account
   outputTokens: number
   estimatedRequestPp: number
+  mistralCost?: { budgetUsd: number; cost: CatalogModel["cost"] }
   score: number
   reasons: string[]
   rejected: string[]
@@ -89,6 +90,8 @@ export interface Policy {
     hardReservePp: number
     softReservePp: Record<string, number>
     estimatedRequestPp: Record<string, number>
+    /** Explicit per-account monthly USD allowance, when known or inferred. */
+    mistralBudgetUsd?: Record<string, number>
     maxConcurrentPerAccount: Record<string, number>
     /** Optional global cap across all managed accounts. */
     maxConcurrentTotal?: number

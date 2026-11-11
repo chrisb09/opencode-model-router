@@ -47,6 +47,7 @@ export async function loadPolicy(file?: string): Promise<Policy> {
     queueTimeoutMs: z.number().int().nonnegative().max(60_000),
     quota: z.object({ maxAgeMs: z.number().int().positive(), hardReservePp: nonnegative.max(100),
       softReservePp: z.record(z.string(), nonnegative.max(100)), estimatedRequestPp: z.record(z.string(), nonnegative.positive().max(100)),
+      mistralBudgetUsd: z.record(z.string(), nonnegative.positive()).optional(),
       maxConcurrentPerAccount: z.record(z.string(), z.number().int().positive().max(64)),
       maxConcurrentTotal: z.number().int().positive().max(128).optional() }).strict(),
     allowPaid: z.boolean(), allowKimi: z.boolean(), maxTaskUsd: nonnegative, totalBudgetUsd: nonnegative,

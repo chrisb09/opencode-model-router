@@ -53,7 +53,7 @@ export class Router {
       const admissible = check.candidates.find(c => !c.rejected.length)
       if (!admissible) throw new Error("Reserved account no longer eligible: " + check.candidates.flatMap(c => c.rejected).join("; "))
       const id = randomUUID()
-      this.ledger.reserveRequest(id, { ...execution, candidate: { ...execution.candidate, estimatedRequestPp: admissible.estimatedRequestPp } }, inputBound, outputBound, this.clock())
+      this.ledger.reserveRequest(id, { ...execution, candidate: { ...execution.candidate, estimatedRequestPp: admissible.estimatedRequestPp, mistralCost: admissible.mistralCost } }, inputBound, outputBound, this.clock())
       return { requestID: id, accountKey: account.key, credentialID: account.credentialID, model: execution.candidate.ref }
     })
   }
